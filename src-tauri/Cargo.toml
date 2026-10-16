@@ -1,6 +1,6 @@
 [package]
 name = "audioscript"
-version = "0.1.0"
+version = "0.1.1"
 description = "AudioScript 声稿 — 离线优先语音转写，带悬浮流式字幕窗"
 authors = ["Nico"]
 license = "MIT"
@@ -42,11 +42,11 @@ sherpa-onnx = "1.13"
 # 走 `tokenizers`（纯 Rust，无 C++）没有这个问题，代价是模型需自带 tokenizer.json
 # ——见 scripts/fetch-mt-model.mjs。
 # `default-features = false` 是为了去掉 macOS 上无意义的 `cuda-small-binary`。
-ct2rs = { version = "0.10", default-features = false, features = [
-    "tokenizers",
-    "accelerate",
-    "ruy",
-] }
+#
+# ⚠️ 线性代数后端 MUST 按平台分表（见下方 target 表）。`accelerate` 是 Apple 专属，
+# ct2rs 的 build.rs 对它**没有 target 守卫**：开了就无条件 `WITH_ACCELERATE=ON`
+# 并请求链接 Accelerate 框架，在 Windows/Linux 上直接以
+# `Could NOT find BLAS` 失败。各平台该开哪几个见 ct2rs README 的 feature 表。
 
 # ct2rs 的 Tokenizer trait 以 anyhow::Result 为返回类型。
 anyhow = "1"
@@ -65,6 +65,13 @@ flexaudio = "0.5.4"
 tauri-plugin-autostart = "2.7.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+# Apple Silicon 的推荐组合就是 accelerate + ruy。
+ct2rs = { version = "0.10", default-features = false, features = [
+    "tokenizers",
+    "accelerate",
+    "ruy",
+] }
+
 # ⚠️ 不要改用 `flexaudio::devices()`：它把麦克风与系统声音枚举合在一次调用里，而 macOS 上
 # 授权未决时麦克风枚举会整次失败（Microphone consent is undecided），
 # 导致只用系统声音的用户一个设备都看不到——而这是本产品的主场景。
@@ -83,3 +90,11 @@ objc2 = "0.6"
 # 拿不到，而它公开的 preflight() 在授权未决时会弹窗并阻塞最多 30 秒，不能当查询用。
 objc2-foundation = "0.3"
 block2 = "0.6"
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+# ct2rs README 给 Windows 与 Linux(non-ARM) 的推荐 BLAS 都是 mkl。
+# ⚠️ 这条路径尚未在真机验证——CI 只跑 cargo check，见 .github/workflows/build.yml 的 check-* job。
+ct2rs = { version = "0.10", default-features = false, features = [
+    "tokenizers",
+    "mkl",
+] }

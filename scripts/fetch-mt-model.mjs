@@ -8,7 +8,12 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const VENV = join(ROOT, '.cache', 'ct2venv')
-const PY = join(VENV, 'bin', 'python')
+
+// venv 的内部布局按平台分叉：Windows 是 Scripts\*.exe，POSIX 是 bin/*。
+const IS_WIN = process.platform === 'win32'
+const VENV_BIN = join(VENV, IS_WIN ? 'Scripts' : 'bin')
+const PYTHON = IS_WIN ? 'python' : 'python3'
+const PY = join(VENV_BIN, IS_WIN ? 'python.exe' : 'python')
 const TOK_CACHE = join(ROOT, '.cache', 'mt')
 const MT_DIR = join(ROOT, 'src-tauri', 'assets', 'models', 'mt')
 
@@ -29,12 +34,14 @@ const PAIRS = [
 
 const force = process.argv.includes('--force')
 
+// tokenizers 的 from_spm 要把 sentencepiece_model_pb2 当**顶层模块**导入，
+// 而它住在 sentencepiece 包目录里——所以把那个目录塞进 sys.path。
+// ⚠️ 不要用 site.getsitepackages() 定位：Windows 的 venv 里它常返回基础解释器的
+// site-packages，glob 会落空、静默跳过 sys.path 注入，最后以
+// 「you need to run pip install protobuf」这种指错方向的报错收场。
 const SPM_TO_JSON_SCRIPT = `
-import sys, site, glob
-sp = glob.glob(site.getsitepackages()[0] + "/sentencepiece") + \
-     glob.glob(site.getusersitepackages() + "/sentencepiece")
-if sp:
-    sys.path.insert(0, sp[0])
+import sys, os, sentencepiece
+sys.path.insert(0, os.path.dirname(sentencepiece.__file__))
 from tokenizers import SentencePieceUnigramTokenizer
 tok = SentencePieceUnigramTokenizer.from_spm(sys.argv[1])
 tok.save(sys.argv[2])
@@ -76,7 +83,7 @@ async function ensureVenv() {
   if (!(await exists(PY))) {
     process.stdout.write('🐍 创建 Python venv（一次性的，约 1-2 分钟）…\n')
     await mkdir(join(ROOT, '.cache'), { recursive: true })
-    run('python3', ['-m', 'venv', VENV])
+    run(PYTHON, ['-m', 'venv', VENV])
     run(PY, ['-m', 'pip', 'install', '--quiet', '--upgrade', 'pip'])
   }
 
@@ -86,12 +93,13 @@ async function ensureVenv() {
     { stdio: 'ignore' },
   )
   if (probe.status !== 0) {
-    process.stdout.write('📦 安装转换依赖（torch 较大，首次约 3-5 分钟）…\n')
+    const v = spawnSync(PY, ['-V'], { encoding: 'utf8' })
+    const version = (v.stdout || v.stderr || '').trim()
+    process.stdout.write(`📦 安装转换依赖（torch 较大，首次约 3-5 分钟）… [${version}]\n`)
     run(PY, [
       '-m',
       'pip',
       'install',
-      '--quiet',
       'torch',
       'ctranslate2',
       'transformers',
@@ -125,13 +133,14 @@ async function convert(pair) {
     return
   }
 
+  await ensureVenv() // 只在真要转换时才装 torch：否则缓存已命中也要白等 5-10 分钟
   const tokDir = await fetchVocab(pair)
 
   await mkdir(MT_DIR, { recursive: true })
   await rm(out, { recursive: true, force: true })
 
   process.stdout.write(`⬇️  转换 ${pair.note}（下载 fp32 权重 + 转 int8）…\n`)
-  run(join(VENV, 'bin', 'ct2-transformers-converter'), [
+  run(join(VENV_BIN, IS_WIN ? 'ct2-transformers-converter.exe' : 'ct2-transformers-converter'), [
     '--model',
     pair.hf,
     '--output_dir',
@@ -157,7 +166,6 @@ async function convert(pair) {
 
 async function main() {
   process.stdout.write('机器翻译模型（opus-mt + CTranslate2 int8）\n\n')
-  await ensureVenv()
   for (const pair of PAIRS) {
     await convert(pair)
   }
