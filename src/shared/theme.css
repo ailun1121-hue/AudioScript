@@ -1,0 +1,147 @@
+@import "tailwindcss";
+
+@theme static {
+  --color-surface-0: var(--as-surface-0);
+  --color-surface-1: var(--as-surface-1);
+  --color-surface-2: var(--as-surface-2);
+  --color-surface-sidebar: var(--as-surface-sidebar);
+  --color-surface-selected: var(--as-surface-selected);
+
+  --color-ink-0: var(--as-ink-0);
+  --color-ink-1: var(--as-ink-1);
+  --color-ink-2: var(--as-ink-2);
+
+  --color-border-subtle: var(--as-border-subtle);
+  --color-border-strong: var(--as-border-strong);
+
+  --color-accent: var(--as-accent);
+  --color-accent-dim: var(--as-accent-dim);
+  --color-accent-ink: var(--as-accent-ink);
+
+  --color-danger: var(--as-danger);
+  --color-danger-bg: var(--as-danger-bg);
+  --color-danger-ink: var(--as-danger-ink);
+  --color-warn: var(--as-warn);
+  --color-warn-bg: var(--as-warn-bg);
+  --color-warn-ink: var(--as-warn-ink);
+  --color-success: var(--as-success);
+  --color-success-bg: var(--as-success-bg);
+  --color-success-ink: var(--as-success-ink);
+
+  --color-segment-partial: var(--as-segment-partial);
+  --color-segment-final: var(--as-segment-final);
+  --color-segment-edited: var(--as-segment-edited);
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+
+  --radius-ctl: 6px;
+  --radius-panel: 8px;
+  --radius-card: 10px;
+  --radius-pop: 12px;
+
+  --shadow-ctl: 0 1px 2px rgb(0 0 0 / 0.16);
+  --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+
+:root {
+  color-scheme: dark;
+
+  --as-surface-0: #1e1e1e;
+  --as-surface-1: #2a2a2a;
+  --as-surface-2: #333333;
+  --as-surface-sidebar: #2a2a2a;
+  --as-surface-selected: #192b3a;
+
+  --as-ink-0: #ffffff;
+  --as-ink-1: #999999;
+  --as-ink-2: #7a7a7a;
+
+  --as-border-subtle: #3a3a3a;
+  --as-border-strong: #4a4a4a;
+
+  --as-accent: #007aff;
+  --as-accent-dim: #0063d1;
+  --as-accent-ink: #ffffff;
+
+  --as-danger: #ff453a;
+  --as-danger-bg: #3a1d1b;
+  --as-danger-ink: #ff8a80;
+  --as-warn: #ff9f0a;
+  --as-warn-bg: #3a2a10;
+  --as-warn-ink: #ffc46b;
+  --as-success: #30d158;
+  --as-success-bg: #16351f;
+  --as-success-ink: #5cd97b;
+
+  --as-segment-partial: #8e8e93;
+  --as-segment-final: #ffffff;
+  --as-segment-edited: #ffffff;
+
+  font-family: var(--font-sans);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app-window.theme-light {
+  color-scheme: light;
+
+  --as-surface-0: #ffffff;
+  --as-surface-1: #f7f7f7;
+  --as-surface-2: #e2e2e2;
+  --as-surface-sidebar: #ececec;
+  --as-surface-selected: #dce9f9;
+
+  --as-ink-0: #1d1d1f;
+  --as-ink-1: #6e6e73;
+  --as-ink-2: #8e8e93;
+
+  --as-border-subtle: #d8d8d8;
+  --as-border-strong: #bebebe;
+
+  --as-accent: #007aff;
+  --as-accent-dim: #0063d1;
+  --as-accent-ink: #ffffff;
+
+  --as-danger: #ff3b30;
+  --as-danger-bg: #fdebea;
+  --as-danger-ink: #b3261e;
+  --as-warn: #ff9500;
+  --as-warn-bg: #fff4e5;
+  --as-warn-ink: #8a5300;
+  --as-success: #34c759;
+  --as-success-bg: #e7f6ec;
+  --as-success-ink: #1b7a3d;
+
+  --as-segment-partial: #8e8e93;
+  --as-segment-final: #1d1d1f;
+  --as-segment-edited: #1d1d1f;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  height: 100vh;
+  background: var(--color-surface-0);
+  color: var(--color-ink-0);
+}
+
+html:has(.overlay-body),
+html:has(.overlay-body) body,
+.overlay-body {
+  background: transparent !important;
+  overflow: hidden;
+  user-select: none;
+  cursor: default;
+}
+
+#overlay-root {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: flex-end;
+}

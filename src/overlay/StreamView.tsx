@@ -1,0 +1,118 @@
+import { type CSSProperties, memo, useLayoutEffect, useRef } from 'react'
+import { type TranscriptSegment, TranslationState } from '@/shared/types'
+
+const SOURCE_SCALE = 0.8
+
+const SOURCE_OPACITY = 0.7
+
+const PARTIAL_OPACITY = 0.55
+
+interface Props {
+  segments: TranscriptSegment[]
+  maxLines: number
+  fontSize: number
+  fontColor: string
+  opacity: number
+  bgColor: string
+  glow: boolean
+}
+
+export function StreamView({ segments, maxLines, fontSize, fontColor, opacity, bgColor, glow }: Props) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  const tail = segments.at(-1)
+  const followKey = tail ? `${tail.id}:${tail.revision}` : ''
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 意图是 followKey 变化时滚到底，体内无需读取
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [followKey])
+
+  const bg = hexToRgba(bgColor, opacity / 100)
+
+  return (
+    <div className="relative w-full">
+      {glow && (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+          <div className="absolute inset-0 blur-[9px]">
+            <div className="absolute inset-0 rounded-[var(--radius-panel)]" style={glowRing(6)} />
+          </div>
+          <div className="absolute inset-0 rounded-[var(--radius-panel)]" style={glowRing(2)} />
+        </div>
+      )}
+
+      <div
+        ref={scrollRef}
+        className="relative w-full overflow-y-auto rounded-[var(--radius-panel)] px-4 py-2"
+        style={{
+          background: bg,
+          fontSize: `${fontSize}px`,
+          color: fontColor,
+          lineHeight: 1.35,
+          maxHeight: `calc(${maxLines} * 1.35em + 1rem)`,
+          scrollbarWidth: 'none',
+        }}
+      >
+        {segments.length === 0 ? (
+          <p className="m-0 text-[0.8em]" style={{ color: fontColor, opacity: 0.45 }}>
+            等待识别…
+          </p>
+        ) : (
+          segments.map((s) => <BilingualSegment key={s.id} seg={s} />)
+        )}
+      </div>
+    </div>
+  )
+}
+
+const GLOW_GRADIENT = 'linear-gradient(90deg, #b06ab3 0%, #4facfe 25%, #47cf73 50%, #ffc371 75%, #ff5f6d 100%)'
+
+function glowRing(padding: number): CSSProperties {
+  return {
+    background: GLOW_GRADIENT,
+    padding,
+    maskImage: 'linear-gradient(#000 0 0), linear-gradient(#000 0 0)',
+    maskClip: 'content-box, border-box',
+    maskComposite: 'exclude',
+  }
+}
+
+const BilingualSegment = memo(function BilingualSegment({ seg }: { seg: TranscriptSegment }) {
+  const isPartial = seg.state === 'partial'
+
+  return (
+    <div className={`py-[0.2em] ${seg.state === 'edited' ? 'border-[var(--color-accent)] border-l-2 pl-2' : ''}`}>
+      <p
+        className="m-0"
+        style={{
+          fontSize: `${SOURCE_SCALE}em`,
+          opacity: isPartial ? PARTIAL_OPACITY : SOURCE_OPACITY,
+        }}
+      >
+        {seg.text}
+        {isPartial && <Caret />}
+      </p>
+
+      {seg.translationState === TranslationState.Done && seg.translation && <p className="m-0">{seg.translation}</p>}
+      {seg.translationState === TranslationState.Failed && (
+        <p className="m-0 opacity-40" style={{ fontSize: `${SOURCE_SCALE}em` }}>
+          <span className="italic">翻译失败</span>
+        </p>
+      )}
+    </div>
+  )
+})
+
+function Caret() {
+  return (
+    <span className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-[0.15em] animate-pulse bg-current align-baseline" />
+  )
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
+  if (!m) return `rgba(16, 16, 24, ${alpha})`
+  const n = Number.parseInt(m[1], 16)
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
+}

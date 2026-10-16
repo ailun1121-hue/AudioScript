@@ -1,0 +1,222 @@
+pub mod asr;
+pub mod audio;
+pub mod commands;
+pub mod config;
+pub mod lifecycle;
+pub mod log;
+pub mod overlay;
+pub mod paths;
+pub mod permission;
+pub mod prefs;
+pub mod session;
+pub mod shortcut;
+pub mod transcript;
+pub mod translate;
+pub mod tray;
+
+use tauri::Manager;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let mut builder = tauri::Builder::default();
+
+    builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        tracing::info!("检测到第二次启动，唤回已有实例");
+        lifecycle::show_main(app);
+    }));
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.plugin(tauri_nspanel::init());
+    }
+
+    builder
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
+        .manage(lifecycle::LifecycleState::default())
+        .manage(overlay::OverlayState::default())
+        .manage(shortcut::HotkeyState::default())
+        .manage(session::SessionState::default())
+        .invoke_handler(tauri::generate_handler![commands::dispatch])
+        .on_window_event(lifecycle::on_window_event)
+        .on_page_load(|webview, payload| {
+            if webview.label() != overlay::LABEL {
+                return;
+            }
+            if !matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+                return;
+            }
+            overlay::on_page_loaded(webview.app_handle());
+        })
+        .setup(|app| {
+            let handle = app.handle().clone();
+
+            handle.manage(log::LogDir(log::init(&handle)));
+
+            paths::log_startup_selfcheck(&handle);
+
+            let saved_prefs = prefs::load(&handle);
+            if let Err(e) = overlay::init(&handle, saved_prefs.overlay, saved_prefs.overlay_geometry) {
+                tracing::error!("悬浮窗初始化失败：{e}");
+            }
+
+            if let Err(e) = tray::init(&handle) {
+                tracing::error!("托盘初始化失败：{e}");
+            }
+
+            if let Err(e) = shortcut::init(&handle) {
+                tracing::error!("全局热键初始化失败：{e}");
+            }
+
+            lifecycle::show_main(&handle);
+
+            if std::env::var("AUDIOSCRIPT_SMOKE_ROUTE").is_ok() {
+                let source = audio::source_from_env();
+                let device = std::env::var(audio::ENV_DEVICE)
+                    .ok()
+                    .filter(|s| !s.is_empty());
+
+                let args = serde_json::json!({
+                    "device": device,
+                    "source": source.as_str(),
+                    "config": {
+                        "translate": { "engine": "local-nmt", "sourceLang": "en" }
+                    }
+                });
+
+                tracing::info!("AUDIOSCRIPT_SMOKE_ROUTE 已设置，走真实命令路径启动");
+
+                for src in ["loopback", "mic"] {
+                    match commands::route(
+                        &handle,
+                        "audio_devices",
+                        &serde_json::json!({ "source": src }),
+                    ) {
+                        Ok(v) => {
+                            let arr = v.as_array().cloned().unwrap_or_default();
+                            let names: Vec<String> = arr
+                                .iter()
+                                .filter_map(|d| d["name"].as_str().map(str::to_owned))
+                                .collect();
+                            tracing::info!(
+                                source = src,
+                                count = arr.len(),
+                                names = ?names,
+                                "冒烟：设备枚举成功"
+                            );
+                        }
+                        Err(e) => {
+                            tracing::error!(source = src, "冒烟：设备枚举失败：{e}")
+                        }
+                    }
+                }
+
+                for (cmd, a) in [
+                    ("app_info", serde_json::json!({})),
+                    ("permission_status", serde_json::json!({})),
+                    (
+                        "open_privacy_settings",
+                        serde_json::json!({ "pane": "不存在的页" }),
+                    ),
+                    ("prefs_get", serde_json::json!({})),
+                    ("config_defaults", serde_json::json!({})),
+                    ("model_info", serde_json::json!({})),
+                    (
+                        "prefs_set",
+                        serde_json::json!({ "patch": { "theme": "dark" } }),
+                    ),
+                    ("autostart_get", serde_json::json!({})),
+                    ("autostart_set", serde_json::json!({ "enabled": false })),
+                    ("logs_export", serde_json::json!({})),
+                    ("shortcuts_get", serde_json::json!({})),
+                    (
+                        "shortcuts_set",
+                        serde_json::json!({
+                            "id": "overlay.toggleVisible",
+                            "accelerator": "CmdOrControl+Shift+H"
+                        }),
+                    ),
+                    (
+                        "shortcuts_set",
+                        serde_json::json!({ "id": "不存在的热键", "accelerator": "CmdOrControl+Shift+H" }),
+                    ),
+                ] {
+                    match commands::route(&handle, cmd, &a) {
+                        Ok(_) => tracing::info!(cmd, "冒烟：命令成功"),
+                        Err(e) => tracing::error!(cmd, "冒烟：命令失败：{e}"),
+                    }
+                }
+
+                let after = prefs::load(&handle);
+                tracing::info!(
+                    theme = ?after.theme,
+                    audio_source = %after.audio_source,
+                    source_lang = %after.source_lang,
+                    font_size = after.overlay.font_size,
+                    endpoint_ms = after.endpoint.trailing_silence_ms,
+                    "冒烟：改 theme 之后的偏好（其余字段应与改之前一致）"
+                );
+
+                match commands::route(&handle, "session_start", &args) {
+                    Ok(_) => tracing::info!("冒烟（真实命令路径）：session_start 成功"),
+                    Err(e) => {
+                        tracing::error!("冒烟（真实命令路径）：session_start 失败：{e}")
+                    }
+                }
+            }
+
+            if std::env::var("AUDIOSCRIPT_AUTOSTART").is_ok() {
+                let device = std::env::var(audio::ENV_DEVICE)
+                    .ok()
+                    .filter(|s| !s.is_empty());
+                let source = audio::source_from_env();
+                let translate_source = std::env::var("AUDIOSCRIPT_SOURCE_LANG")
+                    .ok()
+                    .filter(|v| v == "zh" || v == "en")
+                    .unwrap_or_else(|| "en".into());
+                tracing::info!(
+                    source = source.as_str(),
+                    device = ?device,
+                    "AUDIOSCRIPT_AUTOSTART 已设置，自动开始转写"
+                );
+                match session::start(
+                    &handle,
+                    config::SessionConfig {
+                        asr: config::AsrConfig::default(),
+                        translate: config::TranslateConfig {
+                            engine: std::env::var("AUDIOSCRIPT_TRANSLATE")
+                                .ok()
+                                .and_then(|v| match v.as_str() {
+                                    "off" => Some(config::TranslateEngine::Off),
+                                    "mock" => Some(config::TranslateEngine::Mock),
+                                    "local-nmt" => Some(config::TranslateEngine::LocalNmt),
+                                    _ => None,
+                                })
+                                .unwrap_or(config::TranslateEngine::LocalNmt),
+                            source_lang: translate_source.clone(),
+                            ..Default::default()
+                        },
+                    },
+                    source,
+                    device,
+                ) {
+                    Ok(()) => tracing::info!("自动开始转写：成功"),
+                    Err(e) => tracing::error!("自动开始转写失败：{e}"),
+                }
+            }
+
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = &event {
+                if lifecycle::on_run_event(app, &event) {
+                    api.prevent_exit();
+                }
+            }
+        });
+}

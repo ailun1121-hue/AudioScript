@@ -1,0 +1,43 @@
+{
+  "name": "audioscript",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.29.2",
+  "description": "AudioScript 声稿 — 离线优先语音转写，带悬浮流式字幕窗",
+  "license": "MIT",
+  "scripts": {
+    "gen:types": "typeshare src-tauri --lang=typescript --output-file=src/shared/types.ts",
+    "dev": "pnpm gen:types && vite",
+    "build": "pnpm gen:types && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --project tsconfig.app.json --noEmit",
+    "lint": "biome check --write src/",
+    "format": "biome format --write src/",
+    "build:app": "tauri build --debug --bundles app",
+    "icons": "node scripts/make-icons.mjs",
+    "clean:dmg": "bash scripts/clean-dmg.sh",
+    "fetch:model": "node scripts/fetch-model.mjs",
+    "fetch:mt": "node scripts/fetch-mt-model.mjs",
+    "prepare": "node scripts/fetch-model.mjs",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "@tauri-apps/api": "^2",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.2",
+    "@tailwindcss/vite": "^4.3.2",
+    "@tauri-apps/cli": "^2",
+    "@types/node": "^24",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "tailwindcss": "^4.3.2",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.1"
+  }
+}

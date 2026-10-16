@@ -1,0 +1,33 @@
+# 依赖与构建产物
+node_modules
+dist
+dist-ssr
+*.local
+
+# TypeScript 增量构建缓存
+*.tsbuildinfo
+
+# Rust
+src-tauri/target/
+src-tauri/gen/schemas
+
+# 模型：不入库，由 scripts/fetch-model.mjs 下载（SPEC §5.2）。
+# ⚠️ .gitkeep 必须保留——tauri.conf.json 的 bundle.resources 指向该目录，路径不存在会让 `cargo check` 直接失败。
+src-tauri/assets/models/*
+!src-tauri/assets/models/.gitkeep
+
+# 模型归档缓存
+.cache/
+
+# 日志
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# 编辑器与系统
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.sw?

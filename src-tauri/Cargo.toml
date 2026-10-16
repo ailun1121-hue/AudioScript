@@ -1,0 +1,85 @@
+[package]
+name = "audioscript"
+version = "0.1.0"
+description = "AudioScript 声稿 — 离线优先语音转写，带悬浮流式字幕窗"
+authors = ["Nico"]
+license = "MIT"
+edition = "2021"
+# tauri-plugin-single-instance / global-shortcut 要求 >= 1.90
+rust-version = "1.90"
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+# 可执行文件名 = macOS 眼里的应用名：非 bundle 进程（dev 直接跑二进制）的 Dock 标签与 ⌘-Tab
+# 取的就是它，全小写会在 Dock 上显示成 audioscript。
+[[bin]]
+name = "AudioScript"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# ⚠️ macos-private-api 是 tauri-nspanel 换 NSPanel 的前提，代价是无法上架 Mac App Store
+# （本项目走 GitHub Releases 分发，可接受）。
+tauri = { version = "2.12", features = ["tray-icon", "image-png", "macos-private-api"] }
+
+# ⚠️ 必须第一个注册，否则会有两个托盘图标、两条音频管线。
+tauri-plugin-single-instance = "2"
+
+# macOS 上普通组合键走 Carbon RegisterEventHotKey，不需要辅助功能权限；
+# 只有 5 个媒体键才会走 CGEventTap（那条路才要权限）。
+tauri-plugin-global-shortcut = "2"
+
+# ⚠️ 不要换成第三方 `sherpa-rs`——已废弃停维护。
+sherpa-onnx = "1.13"
+
+# ⚠️⚠️ 绝不要开 `sentencepiece` feature：它拉进的 sentencepiece-sys 会编译 darts-clone，
+# 与 sherpa 静态包里内嵌的那一份同名符号冲突。链接器不报错、静默选一份，
+# 运行时 sherpa 踩到不匹配实现抛 `Ort::Exception`，进程直接终止。
+# 走 `tokenizers`（纯 Rust，无 C++）没有这个问题，代价是模型需自带 tokenizer.json
+# ——见 scripts/fetch-mt-model.mjs。
+# `default-features = false` 是为了去掉 macOS 上无意义的 `cuda-small-binary`。
+ct2rs = { version = "0.10", default-features = false, features = [
+    "tokenizers",
+    "accelerate",
+    "ruy",
+] }
+
+# ct2rs 的 Tokenizer trait 以 anyhow::Result 为返回类型。
+anyhow = "1"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+
+typeshare = "1"
+uuid = { version = "1", features = ["v4"] }
+flexaudio = "0.5.4"
+tauri-plugin-autostart = "2.7.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# ⚠️ 不要改用 `flexaudio::devices()`：它把麦克风与系统声音枚举合在一次调用里，而 macOS 上
+# 授权未决时麦克风枚举会整次失败（Microphone consent is undecided），
+# 导致只用系统声音的用户一个设备都看不到——而这是本产品的主场景。
+# 本 crate 的 list_output_devices() 只读设备属性，不需要授权。
+flexaudio-os-macos = "0.5.4"
+
+# 这是悬浮窗能浮在他人全屏应用之上的唯一途径（普通 NSWindow 不在那个 compositor group 里）。
+# ⚠️ 上游把 panel handle 标了 Send/Sync 但没真的保证主线程——原生写操作必须自己 run_on_main_thread。
+tauri-nspanel = { version = "2.1", default-features = false }
+
+# Tauri 只暴露布尔的 set_always_on_top，它映射到 NSFloatingWindowLevel(3)，盖不住他人全屏应用，
+# 故需直接调 NSWindow 的 level。
+objc2 = "0.6"
+
+# 麦克风授权状态查询与申请（AVCaptureDevice）。flexaudio-mic 内部的 status() 是 pub(crate)
+# 拿不到，而它公开的 preflight() 在授权未决时会弹窗并阻塞最多 30 秒，不能当查询用。
+objc2-foundation = "0.3"
+block2 = "0.6"

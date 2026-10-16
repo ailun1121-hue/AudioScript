@@ -1,0 +1,249 @@
+import { invoke } from '@tauri-apps/api/core'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import type {
+  AudioStatus,
+  EndpointConfig,
+  InputDevice,
+  MicRequestResult,
+  OverlayConfig,
+  PermissionSnapshot,
+  Preferences,
+  PrefsPatch,
+  SessionInfo,
+  SystemAudioProbe,
+  TaskStatus,
+  TranscriptSegment,
+} from './types'
+import { AudioSourceKind, MicPermission, OverlayMode, SystemAudioVerdict, Theme, TranslateEngine } from './types'
+
+export type {
+  AudioStatus,
+  EndpointConfig,
+  InputDevice,
+  MicRequestResult,
+  OverlayConfig,
+  PermissionSnapshot,
+  Preferences,
+  PrefsPatch,
+  SessionInfo,
+  SystemAudioProbe,
+  TaskStatus,
+  TranscriptSegment,
+}
+export { AudioSourceKind, MicPermission, OverlayMode, SystemAudioVerdict, Theme, TranslateEngine }
+
+export async function call<T = unknown>(name: string, args: Record<string, unknown> = {}): Promise<T> {
+  return invoke<T>('dispatch', { name, args })
+}
+
+export const EVENT = {
+  segments: 'transcript://segments',
+  taskState: 'transcript://state',
+  overlayState: 'overlay://state',
+  overlayVisibility: 'overlay://visibility',
+  audio: 'transcript://audio',
+  level: 'transcript://level',
+} as const
+
+export function on<T>(event: string, handler: (payload: T) => void): Promise<UnlistenFn> {
+  return listen<T>(event, (e) => handler(e.payload))
+}
+
+export interface AppInfo {
+  name: string
+  version: string
+  platform: string
+  arch: string
+  builtAtMs: number | null
+}
+
+export interface AutostartState {
+  enabled: boolean
+}
+
+export interface ConfigDefaults {
+  overlay: OverlayConfig
+  endpoint: EndpointConfig
+  endpointProfiles: Record<'interpretation' | 'dictation', EndpointConfig>
+}
+
+export interface ModelEntry {
+  name: string
+  path: string
+  installed: boolean
+  complete?: boolean
+  via?: string
+  license: string
+  source?: string
+  requiresAttribution?: boolean
+}
+
+export interface ModelInfo {
+  asr: ModelEntry | null
+  translate: ModelEntry[] | null
+}
+
+export function appInfo(): Promise<AppInfo> {
+  return call<AppInfo>('app_info')
+}
+
+export function sessionStart(
+  device?: string,
+  translate: TranslateEngine = TranslateEngine.LocalNmt,
+  sourceLang = 'en',
+  source: AudioSourceKind = AudioSourceKind.Loopback,
+): Promise<TaskStatus> {
+  return call<TaskStatus>('session_start', {
+    device: device ?? null,
+    source,
+    config: { translate: { engine: translate, sourceLang } },
+  })
+}
+
+export function audioDevices(source: AudioSourceKind = AudioSourceKind.Loopback): Promise<InputDevice[]> {
+  return call<InputDevice[]>('audio_devices', { source })
+}
+
+export function prefsGet(): Promise<Preferences> {
+  return call<Preferences>('prefs_get')
+}
+
+export function prefsSet(patch: PrefsPatch): Promise<Preferences> {
+  return call<Preferences>('prefs_set', { patch })
+}
+
+export function prefsReset(): Promise<Preferences> {
+  return call<Preferences>('prefs_reset')
+}
+
+export function configDefaults(): Promise<ConfigDefaults> {
+  return call<ConfigDefaults>('config_defaults')
+}
+
+export function modelInfo(): Promise<ModelInfo> {
+  return call<ModelInfo>('model_info')
+}
+
+export function autostartGet(): Promise<AutostartState> {
+  return call<AutostartState>('autostart_get')
+}
+
+export function autostartSet(enabled: boolean): Promise<AutostartState> {
+  return call<AutostartState>('autostart_set', { enabled })
+}
+
+export interface HotkeyInfo {
+  id: string
+  label: string
+  accelerator: string
+  acceleratorPretty: string
+  defaultAccelerator: string
+  customized: boolean
+  registered: boolean
+}
+
+export function shortcutsGet(): Promise<HotkeyInfo[]> {
+  return call<HotkeyInfo[]>('shortcuts_get')
+}
+
+export function shortcutsSet(id: string, accelerator: string): Promise<HotkeyInfo[]> {
+  return call<HotkeyInfo[]>('shortcuts_set', { id, accelerator })
+}
+
+export type PrivacyPane = 'microphone' | 'systemAudio'
+
+export function openPrivacySettings(pane: PrivacyPane = 'systemAudio'): Promise<null> {
+  return call<null>('open_privacy_settings', { pane })
+}
+
+export type PermissionKind = 'microphone' | 'systemAudio'
+
+export interface CmdPermissionError {
+  kind: 'permission'
+  permission: PermissionKind
+  message: string
+}
+
+export function permissionOf(e: unknown): CmdPermissionError | null {
+  if (typeof e !== 'object' || e === null) return null
+  const c = e as Partial<CmdPermissionError>
+  return c.kind === 'permission' && typeof c.message === 'string' ? (c as CmdPermissionError) : null
+}
+
+export function formatCmdError(e: unknown): string {
+  return permissionOf(e)?.message ?? String(e)
+}
+
+export function permissionStatus(): Promise<PermissionSnapshot> {
+  return call<PermissionSnapshot>('permission_status')
+}
+
+export function permissionRequestMic(): Promise<MicRequestResult> {
+  return call<MicRequestResult>('permission_request_mic')
+}
+
+export function permissionProbeSystemAudio(): Promise<SystemAudioProbe> {
+  return call<SystemAudioProbe>('permission_probe_system_audio')
+}
+
+export function openRepo(): Promise<null> {
+  return call<null>('open_repo')
+}
+
+export function revealPath(path?: string): Promise<null> {
+  return call<null>('reveal_path', path ? { path } : {})
+}
+
+export function logsExport(): Promise<{ path: string }> {
+  return call<{ path: string }>('logs_export')
+}
+
+export function transcriptExport(stamp: string): Promise<{ path: string }> {
+  return call<{ path: string }>('transcript_export', { stamp })
+}
+
+export function overlayToggle(): Promise<boolean> {
+  return call<boolean>('overlay_toggle')
+}
+
+export function overlaySetMode(mode: OverlayMode): Promise<OverlayMode> {
+  return call<OverlayMode>('overlay_set_mode', { mode })
+}
+
+export function overlayConfigGet(): Promise<OverlayConfig> {
+  return call<OverlayConfig>('overlay_config_get')
+}
+
+export function overlayConfigSet(config: OverlayConfig): Promise<OverlayConfig> {
+  return call<OverlayConfig>('overlay_config_set', { config })
+}
+
+export function overlayIsVisible(): Promise<boolean> {
+  return call<boolean>('overlay_visible')
+}
+
+export function sessionStop(): Promise<TaskStatus> {
+  return call<TaskStatus>('session_stop')
+}
+
+export function sessionSnapshot(): Promise<TranscriptSegment[]> {
+  return call<TranscriptSegment[]>('session_snapshot')
+}
+
+export function sessionStatus(): Promise<SessionInfo> {
+  return call<SessionInfo>('session_status')
+}
+
+export function sessionClear(): Promise<void> {
+  return call<void>('session_clear')
+}
+
+export interface HotkeyFailure {
+  id: string
+  accelerator: string
+  label: string
+}
+
+export function hotkeyFailures(): Promise<HotkeyFailure[]> {
+  return call<HotkeyFailure[]>('hotkey_failures')
+}

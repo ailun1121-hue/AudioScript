@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      麦克风权限说明。
+
+      ⚠️ 没有这一条，macOS 的 TCC 会**直接拒绝且不弹窗**——
+      用户看到的是"点了开始但什么都没发生"，而且系统设置里连应用都不会出现。
+      这类静默失败最难排查，所以这段文案既要能让用户看懂，也要能让他们放心。
+
+      文案刻意点明"仅在本机处理"：这是产品定位（离线优先）的直接体现，
+      也是用户决定是否授权的关键信息。
+    -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>AudioScript 需要使用麦克风进行实时语音转写。音频仅在本机由离线模型处理，不会上传到任何服务器。</string>
+
+    <!--
+      系统声音录制权限说明（Core Audio Process Tap 走的就是这条）。
+
+      这是**主场景**：监听播放器输出，给外语视频配双语字幕。
+
+      ⚠️ 与麦克风那条同一个坑，但更隐蔽：没有这个键时 tap 依然"创建成功"、
+      采集依然"正常启动"，只是永远返回数字静音——采集链路上没有任何一处报错。
+      而且应用很可能**根本不出现在**系统设置的「屏幕与系统音频录制」列表里，
+      于是连手动授权的入口都没有。
+
+      Apple 没有提供查询该权限状态的 API（见 SPEC §11.2 风险 3），
+      所以授权与否只能靠「权限」页的功能自测来判定。
+    -->
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>AudioScript 需要录制系统声音，才能把正在播放的视频或播客实时转成字幕。音频仅在本机由离线模型处理，不会上传到任何服务器。</string>
+
+    <!--
+      仍未加：NSSpeechRecognitionUsageDescription —— V0.2 接入 macOS SFSpeech 时才需要。
+      在真正用到之前写进来，只会让首次启动弹出无关的权限请求。
+    -->
+</dict>
+</plist>
