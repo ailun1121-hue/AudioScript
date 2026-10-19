@@ -6,10 +6,9 @@ import { cn } from './cn'
 interface Props {
   pretty: string
   onRecord: (accelerator: string) => void
-  disabled?: boolean
 }
 
-export function ShortcutRecorder({ pretty, onRecord, disabled }: Props) {
+export function ShortcutRecorder({ pretty, onRecord }: Props) {
   const [recording, setRecording] = useState(false)
 
   useEffect(() => {
@@ -64,7 +63,7 @@ export function ShortcutRecorder({ pretty, onRecord, disabled }: Props) {
           取消
         </Button>
       ) : (
-        <Button size="sm" disabled={disabled} onClick={() => setRecording(true)}>
+        <Button size="sm" onClick={() => setRecording(true)}>
           修改
         </Button>
       )}

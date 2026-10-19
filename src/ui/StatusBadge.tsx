@@ -13,17 +13,12 @@ const TONE: Record<Tone, string> = {
 interface Props {
   children: ReactNode
   tone?: Tone
-  className?: string
 }
 
-export function StatusBadge({ children, tone = 'muted', className }: Props) {
+export function StatusBadge({ children, tone = 'muted' }: Props) {
   return (
     <span
-      className={cn(
-        'inline-flex h-[22px] shrink-0 items-center rounded-[4px] px-2 font-semibold text-xs',
-        TONE[tone],
-        className,
-      )}
+      className={cn('inline-flex h-[22px] shrink-0 items-center rounded-[4px] px-2 font-semibold text-xs', TONE[tone])}
     >
       {children}
     </span>

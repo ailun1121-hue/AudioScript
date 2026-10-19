@@ -20,10 +20,9 @@ interface Props {
   selected: boolean
   onSelect: () => void
   disabled?: boolean
-  trailing?: ReactNode
 }
 
-export function ChoiceCard({ title, description, selected, onSelect, disabled, trailing }: Props) {
+export function ChoiceCard({ title, description, selected, onSelect, disabled }: Props) {
   return (
     // biome-ignore lint/a11y/useSemanticElements: 原生 radio 排不出卡片布局；role 与键盘行为由这里显式补齐
     <div
@@ -52,7 +51,6 @@ export function ChoiceCard({ title, description, selected, onSelect, disabled, t
           <div className="mt-0.5 text-[var(--color-ink-1)] text-[13px] leading-relaxed">{description}</div>
         )}
       </div>
-      {trailing && <div className="shrink-0 pt-0.5">{trailing}</div>}
     </div>
   )
 }

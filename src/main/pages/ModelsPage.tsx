@@ -15,6 +15,7 @@ import {
   modelsList,
   on,
 } from '@/shared/ipc'
+import { ModelKind, TaskStatus } from '@/shared/types'
 import { Alert } from '@/ui/Alert'
 import { Button } from '@/ui/Button'
 import { Icon } from '@/ui/Icon'
@@ -30,7 +31,7 @@ interface Failure {
 
 export function ModelsPage() {
   const { status, setError } = useStore()
-  const capturing = status === 'capturing'
+  const capturing = status === TaskStatus.Capturing
 
   const [list, setList] = useState<ModelsList | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -185,43 +186,28 @@ export function ModelsPage() {
         </Alert>
       )}
 
-      <SettingsGroup title="语音识别">
-        {list.asr.map((m) => (
-          <ModelRow
-            key={m.id}
-            model={m}
-            job={job}
-            capturing={capturing}
-            busy={busyId === m.id}
-            anyJob={job !== null}
-            confirmRemove={confirmRemove === m.id}
-            onDownload={() => void download(m.id)}
-            onCancel={() => job && void cancel(job.jobId)}
-            onSelect={() => void select(m.id)}
-            onRemove={() => void remove(m.id)}
-            onCancelRemove={() => setConfirmRemove(null)}
-          />
-        ))}
-      </SettingsGroup>
-
-      <SettingsGroup title="机器翻译">
-        {list.mt.map((m) => (
-          <ModelRow
-            key={m.id}
-            model={m}
-            job={job}
-            capturing={capturing}
-            busy={busyId === m.id}
-            anyJob={job !== null}
-            confirmRemove={confirmRemove === m.id}
-            onDownload={() => void download(m.id)}
-            onCancel={() => job && void cancel(job.jobId)}
-            onSelect={() => void select(m.id)}
-            onRemove={() => void remove(m.id)}
-            onCancelRemove={() => setConfirmRemove(null)}
-          />
-        ))}
-      </SettingsGroup>
+      {[
+        { title: '语音识别', items: list.asr },
+        { title: '机器翻译', items: list.mt },
+      ].map((group) => (
+        <SettingsGroup key={group.title} title={group.title}>
+          {group.items.map((m) => (
+            <ModelRow
+              key={m.id}
+              model={m}
+              job={job}
+              capturing={capturing}
+              busy={busyId === m.id}
+              confirmRemove={confirmRemove === m.id}
+              onDownload={() => void download(m.id)}
+              onCancel={() => job && void cancel(job.jobId)}
+              onSelect={() => void select(m.id)}
+              onRemove={() => void remove(m.id)}
+              onCancelRemove={() => setConfirmRemove(null)}
+            />
+          ))}
+        </SettingsGroup>
+      ))}
 
       <p className="px-1 text-[var(--color-ink-2)] text-[0.7rem] leading-relaxed">
         {connected ? '可选模型下载需联网。' : '无法解析模型存储目录，可选模型暂不可用。'}
@@ -240,7 +226,6 @@ interface RowProps {
   job: ModelJobStatus | null
   capturing: boolean
   busy: boolean
-  anyJob: boolean
   confirmRemove: boolean
   onDownload: () => void
   onCancel: () => void
@@ -254,7 +239,6 @@ function ModelRow({
   job,
   capturing,
   busy,
-  anyJob,
   confirmRemove,
   onDownload,
   onCancel,
@@ -265,11 +249,11 @@ function ModelRow({
   const activeJob = job && job.modelId === model.id ? job : null
   const licenses = [...new Set(model.licenses.map((l) => l.license))]
   const needsAttribution = model.licenses.some((l) => l.requiresAttribution)
-  const canDelete = model.installed && !model.bundled && model.downloadable && !model.selected && !capturing && !anyJob
+  const canDelete = model.installed && !model.bundled && model.downloadable && !model.selected && !capturing && !job
 
   return (
     <SettingsRow
-      icon={model.kind === 'asr' ? 'waveform' : 'translate'}
+      icon={model.kind === ModelKind.Asr ? 'waveform' : 'translate'}
       title={
         <span className="flex flex-wrap items-center gap-1.5">
           {model.title}
@@ -317,7 +301,13 @@ function ModelRow({
                   使用
                 </Button>
               ) : model.downloadable ? (
-                <Button size="sm" variant="primary" icon="download" onClick={onDownload} disabled={busy || anyJob}>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon="download"
+                  onClick={onDownload}
+                  disabled={busy || job !== null}
+                >
                   {model.installed ? '重新下载' : '下载'}
                 </Button>
               ) : null}

@@ -1,5 +1,5 @@
 import { type CSSProperties, memo, useLayoutEffect, useRef } from 'react'
-import { type TranscriptSegment, TranslationState } from '@/shared/types'
+import { SegmentState, type TranscriptSegment, TranslationState } from '@/shared/types'
 
 const SOURCE_SCALE = 0.8
 
@@ -87,10 +87,12 @@ function glowRing(padding: number): CSSProperties {
 }
 
 const BilingualSegment = memo(function BilingualSegment({ seg }: { seg: TranscriptSegment }) {
-  const isPartial = seg.state === 'partial'
+  const isPartial = seg.state === SegmentState.Partial
 
   return (
-    <div className={`py-[0.2em] ${seg.state === 'edited' ? 'border-[var(--color-accent)] border-l-2 pl-2' : ''}`}>
+    <div
+      className={`py-[0.2em] ${seg.state === SegmentState.Edited ? 'border-[var(--color-accent)] border-l-2 pl-2' : ''}`}
+    >
       <p
         className="m-0"
         style={{

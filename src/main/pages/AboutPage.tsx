@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useState } from 'react'
 import { useStore } from '@/main/store'
 import { formatCmdError, type ModelsList, modelsList, openRepo, openSponsor, openUrl } from '@/shared/ipc'
+import { ModelKind } from '@/shared/types'
 import { Button } from '@/ui/Button'
 import { Icon } from '@/ui/Icon'
 import { Page } from '@/ui/Page'
@@ -206,7 +207,7 @@ export function AboutPage() {
               m.licenses.map((l) => (
                 <SettingsRow
                   key={`${m.id}-${l.component}`}
-                  icon={m.kind === 'asr' ? 'waveform' : 'translate'}
+                  icon={m.kind === ModelKind.Asr ? 'waveform' : 'translate'}
                   title={l.component}
                   description={
                     <>

@@ -14,8 +14,7 @@ function levelRatio(value: number): number {
   return Math.min(1, Math.max(0, (db - FLOOR_DB) / (CEIL_DB - FLOOR_DB)))
 }
 
-export function LevelBars({ level }: { level: number }) {
-  const dots = Math.ceil(levelRatio(level) * SEGMENTS.length)
+function Dots({ dots, animated }: { dots: number; animated?: boolean }) {
   return (
     <div className="flex items-center gap-1" role="img" aria-label="输入电平">
       {SEGMENTS.map((seg) => (
@@ -23,12 +22,17 @@ export function LevelBars({ level }: { level: number }) {
           key={seg}
           className={cn(
             'size-1.5 rounded-full',
+            animated && 'transition-colors duration-150',
             seg < dots ? 'bg-[var(--color-success)]' : 'bg-[var(--color-surface-2)]',
           )}
         />
       ))}
     </div>
   )
+}
+
+export function LevelBars({ level }: { level: number }) {
+  return <Dots dots={Math.ceil(levelRatio(level) * SEGMENTS.length)} />
 }
 
 export function LevelMeter({ active }: { active: boolean }) {
@@ -60,17 +64,5 @@ export function LevelMeter({ active }: { active: boolean }) {
     }
   }, [active])
 
-  return (
-    <div className="flex items-center gap-1" role="img" aria-label="输入电平">
-      {SEGMENTS.map((seg) => (
-        <span
-          key={seg}
-          className={cn(
-            'size-1.5 rounded-full transition-colors duration-150',
-            seg < dots ? 'bg-[var(--color-success)]' : 'bg-[var(--color-surface-2)]',
-          )}
-        />
-      ))}
-    </div>
-  )
+  return <Dots dots={dots} animated />
 }

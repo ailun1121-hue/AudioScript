@@ -1,5 +1,6 @@
 import { useStore } from '@/main/store'
 import { AudioSourceKind, openPrivacySettings } from '@/shared/ipc'
+import { TaskStatus } from '@/shared/types'
 import { Alert } from '@/ui/Alert'
 import { Button } from '@/ui/Button'
 import { ChoiceCard, ChoiceGroup } from '@/ui/ChoiceCard'
@@ -26,7 +27,7 @@ export function AudioPage({ onOpenPermissions }: { onOpenPermissions: () => void
   const { audioSource, setAudioSource, devices, device, setDevice, deviceError, refreshDevices, audio, status } =
     useStore()
 
-  const capturing = status === 'capturing'
+  const capturing = status === TaskStatus.Capturing
   const selected = devices.find((d) => d.id === device)
 
   return (

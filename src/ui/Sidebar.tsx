@@ -3,8 +3,6 @@ import { cn } from './cn'
 import { Icon, type IconName } from './Icon'
 import { TitleBarSpacer } from './TitleBarSpacer'
 
-export const SIDEBAR_ID = 'app-sidebar'
-
 const NAV_ICON = { size: 18, strokeWidth: 1.75 } as const
 
 export interface SidebarItem<Id extends string> {
@@ -23,7 +21,7 @@ interface Props<Id extends string> {
 
 export function Sidebar<Id extends string>({ items, current, onNavigate, brand, header }: Props<Id>) {
   return (
-    <nav id={SIDEBAR_ID} className="flex w-52 shrink-0 flex-col bg-[var(--color-surface-sidebar)]">
+    <nav className="flex w-52 shrink-0 flex-col bg-[var(--color-surface-sidebar)]">
       <TitleBarSpacer />
 
       {brand && <div className="px-3 py-4">{brand}</div>}

@@ -6,6 +6,7 @@ import {
   MAX_TRAILING_SILENCE_MS,
   MIN_MAX_UTTERANCE_MS,
   MIN_TRAILING_SILENCE_MS,
+  TaskStatus,
 } from '@/shared/types'
 import { Alert } from '@/ui/Alert'
 import { Page } from '@/ui/Page'
@@ -32,7 +33,7 @@ const LANG_OPTIONS = [
 
 export function TranslatePage() {
   const { translateEngine, setTranslateEngine, sourceLang, setSourceLang, endpoint, setEndpoint, status } = useStore()
-  const capturing = status === 'capturing'
+  const capturing = status === TaskStatus.Capturing
 
   const [defaults, setDefaults] = useState<ConfigDefaults | null>(null)
   useEffect(() => {

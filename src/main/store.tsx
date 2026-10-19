@@ -17,7 +17,6 @@ import {
   overlayConfigGet,
   overlayConfigSet,
   overlayIsVisible,
-  overlaySetMode,
   overlayToggle,
   type PermissionSnapshot,
   type Preferences,
@@ -35,9 +34,9 @@ import {
   TranslateEngine,
 } from '@/shared/ipc'
 import { withTimeout } from '@/shared/timeout'
-import { OverlayMode, TaskStatus } from '@/shared/types'
+import { TaskStatus } from '@/shared/types'
 
-export type EndpointConfig = Preferences['endpoint']
+type EndpointConfig = Preferences['endpoint']
 
 interface Store {
   info: AppInfo | null
@@ -48,7 +47,6 @@ interface Store {
   translateEngine: TranslateEngine
   sourceLang: string
   theme: Theme
-  sidebarVisible: boolean
   endpoint: EndpointConfig
 
   status: TaskStatus
@@ -83,11 +81,9 @@ interface Store {
   setTranslateEngine: (v: TranslateEngine) => void
   setSourceLang: (v: string) => void
   changeTheme: (v: Theme) => Promise<void>
-  toggleSidebar: () => void
   setEndpoint: (v: EndpointConfig) => Promise<void>
   updateOverlay: (patch: Partial<OverlayConfig>) => Promise<void>
   toggleOverlay: () => Promise<void>
-  toggleMode: () => Promise<void>
   refreshDevices: () => Promise<void>
   refreshHotkeys: () => Promise<void>
 }
@@ -113,7 +109,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [translateEngine, setTranslateEngine] = useState<TranslateEngine>(TranslateEngine.LocalNmt)
   const [sourceLang, setSourceLang] = useState('en')
   const [theme, setTheme] = useState<Theme>(Theme.System)
-  const [sidebarVisible, setSidebarVisible] = useState(true)
   const [endpoint, setEndpoint] = useState<EndpointConfig>({
     trailingSilenceMs: 800,
     maxUtteranceMs: 8000,
@@ -182,7 +177,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setTranslateEngine(p.translateEngine)
         setSourceLang(p.sourceLang)
         setTheme(p.theme)
-        setSidebarVisible(p.sidebarVisible)
         setEndpoint(p.endpoint)
         setOnboardingDone(p.onboardingDone)
         if (p.deviceId) setDevice(p.deviceId)
@@ -257,7 +251,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setDeviceError(null)
       setDevice((cur) => cur || (list.find((d) => d.isDefault)?.id ?? ''))
     } catch (e) {
-      setDeviceError(String(e))
+      setDeviceError(formatCmdError(e))
     }
   }, [audioSource])
 
@@ -328,16 +322,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const toggleMode = useCallback(async () => {
-    try {
-      const current = overlayCfg?.mode ?? OverlayMode.Edit
-      const next = current === OverlayMode.Locked ? OverlayMode.Edit : OverlayMode.Locked
-      await overlaySetMode(next)
-    } catch (e) {
-      setError(formatCmdError(e))
-    }
-  }, [overlayCfg])
-
   const refreshHotkeys = useCallback(async () => {
     try {
       setHotkeys(await shortcutsGet())
@@ -354,12 +338,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     [patchPrefs],
   )
-
-  const toggleSidebar = useCallback(() => {
-    const next = !sidebarVisible
-    setSidebarVisible(next)
-    void patchPrefs({ sidebarVisible: next })
-  }, [patchPrefs, sidebarVisible])
 
   const changeAudioSource = useCallback(
     (v: AudioSourceKind) => {
@@ -411,7 +389,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       translateEngine,
       sourceLang,
       theme,
-      sidebarVisible,
       endpoint,
       status,
       activeDevice,
@@ -438,11 +415,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setTranslateEngine: changeTranslateEngine,
       setSourceLang: changeSourceLang,
       changeTheme,
-      toggleSidebar,
       setEndpoint: changeEndpoint,
       updateOverlay,
       toggleOverlay,
-      toggleMode,
       refreshDevices,
       refreshHotkeys,
     }),
@@ -454,7 +429,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       translateEngine,
       sourceLang,
       theme,
-      sidebarVisible,
       endpoint,
       status,
       activeDevice,
@@ -479,11 +453,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       changeTranslateEngine,
       changeSourceLang,
       changeTheme,
-      toggleSidebar,
       changeEndpoint,
       updateOverlay,
       toggleOverlay,
-      toggleMode,
       refreshDevices,
       refreshHotkeys,
     ],

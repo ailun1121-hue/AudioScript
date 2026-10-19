@@ -4,6 +4,7 @@ import {
   formatCmdError,
   MicPermission,
   openPrivacySettings,
+  type PrivacyPane,
   permissionProbeSystemAudio,
   permissionRequestMic,
   type SystemAudioProbe,
@@ -97,7 +98,7 @@ export function PermissionPanel() {
     }
   }, [refreshPermission, refreshDevices])
 
-  const open = useCallback(async (pane: 'microphone' | 'systemAudio') => {
+  const open = useCallback(async (pane: PrivacyPane) => {
     try {
       await openPrivacySettings(pane)
     } catch (e) {
@@ -127,12 +128,9 @@ export function PermissionPanel() {
                   请求权限
                 </Button>
               )}
-              {mic === MicPermission.NotDetermined && !promptable && (
-                <Button size="sm" onClick={() => void open('microphone')}>
-                  打开设置
-                </Button>
-              )}
-              {(mic === MicPermission.Denied || mic === MicPermission.Restricted) && (
+              {(mic === MicPermission.Denied ||
+                mic === MicPermission.Restricted ||
+                (mic === MicPermission.NotDetermined && !promptable)) && (
                 <Button size="sm" onClick={() => void open('microphone')}>
                   打开设置
                 </Button>

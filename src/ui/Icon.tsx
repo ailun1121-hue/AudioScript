@@ -47,7 +47,6 @@ export type IconName =
   | 'shield'
   | 'github'
   | 'heart'
-  | 'sidebar'
   | 'download'
   | 'chevron'
 
@@ -79,24 +78,6 @@ function GitHubGlyph(props: SVGProps<SVGSVGElement>) {
   )
 }
 
-function SidebarGlyph(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      {...props}
-    >
-      <rect x="3" y="4.5" width="18" height="15" rx="2.5" />
-      <path d="M9.5 4.5v15" />
-    </svg>
-  )
-}
-
 const ICONS: Record<IconName, IconComponent> = {
   waveform: MicrophoneIcon,
   speaker: SpeakerWaveIcon,
@@ -120,7 +101,6 @@ const ICONS: Record<IconName, IconComponent> = {
   shield: ShieldCheckIcon,
   github: GitHubGlyph,
   heart: HeartIcon,
-  sidebar: SidebarGlyph,
   download: ArrowDownTrayIcon,
   chevron: ChevronRightIcon,
 }

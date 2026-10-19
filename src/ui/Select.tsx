@@ -1,6 +1,6 @@
 import { cn } from './cn'
 
-export interface SelectOption<T extends string> {
+interface SelectOption<T extends string> {
   value: T
   label: string
   unavailableReason?: string

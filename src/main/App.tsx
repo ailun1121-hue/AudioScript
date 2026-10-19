@@ -6,7 +6,7 @@ import { PrimaryAction } from '@/ui/PrimaryAction'
 import { Sidebar } from '@/ui/Sidebar'
 import { TitleBarSpacer } from '@/ui/TitleBarSpacer'
 import { Brand } from './Brand'
-import { NAV, navItem, type PageId } from './navigation'
+import { NAV, type PageId } from './navigation'
 import { AboutPage } from './pages/AboutPage'
 import { AudioPage } from './pages/AudioPage'
 import { GeneralPage } from './pages/GeneralPage'
@@ -45,7 +45,6 @@ function BootSplash() {
 
 function Shell() {
   const [page, setPage] = useState<PageId>('transcribe')
-  const current = navItem(page)
 
   return (
     <main className="flex h-full">
@@ -57,7 +56,7 @@ function Shell() {
         <Alerts onOpenPermissions={() => setPage('permissions')} />
 
         <div className="flex-1 overflow-y-auto">
-          <PageSwitch page={page} title={current.label} onOpenPermissions={() => setPage('permissions')} />
+          <PageSwitch page={page} onOpenPermissions={() => setPage('permissions')} />
         </div>
       </section>
     </main>
@@ -78,11 +77,10 @@ function PrimaryActionSlot() {
 
 interface PageSwitchProps {
   page: PageId
-  title: string
   onOpenPermissions: () => void
 }
 
-function PageSwitch({ page, title, onOpenPermissions }: PageSwitchProps) {
+function PageSwitch({ page, onOpenPermissions }: PageSwitchProps) {
   switch (page) {
     case 'transcribe':
       return <TranscribePage />
@@ -100,8 +98,6 @@ function PageSwitch({ page, title, onOpenPermissions }: PageSwitchProps) {
       return <ModelsPage />
     case 'about':
       return <AboutPage />
-    default:
-      return <p className="p-6 text-[var(--color-ink-2)] text-sm">未知页面：{title}</p>
   }
 }
 

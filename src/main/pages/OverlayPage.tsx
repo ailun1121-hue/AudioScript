@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from '@/main/store'
 import { formatCmdError, type OverlayConfig, overlaySetMode, shortcutsSet } from '@/shared/ipc'
+import { isMacOS } from '@/shared/platform'
 import { MAX_FONT_SIZE, MAX_OVERLAY_LINES, MIN_FONT_SIZE, OverlayMode } from '@/shared/types'
 import { Button } from '@/ui/Button'
 import { Page } from '@/ui/Page'
@@ -11,8 +12,7 @@ import { Slider } from '@/ui/Slider'
 import { Switch } from '@/ui/Switch'
 
 export function OverlayPage() {
-  const { overlayCfg, overlayVisible, toggleOverlay, updateOverlay, info, hotkeys, refreshHotkeys, setError } =
-    useStore()
+  const { overlayCfg, overlayVisible, toggleOverlay, updateOverlay, hotkeys, refreshHotkeys, setError } = useStore()
 
   const [draft, setDraft] = useState<OverlayConfig | null>(overlayCfg)
   useEffect(() => setDraft(overlayCfg), [overlayCfg])
@@ -24,8 +24,6 @@ export function OverlayPage() {
       </Page>
     )
   }
-
-  const isMac = info?.platform === 'macos'
 
   async function rebind(id: string, accelerator: string) {
     try {
@@ -67,7 +65,7 @@ export function OverlayPage() {
         <SettingsRow
           icon="check"
           title="始终置顶"
-          unavailableReason={isMac ? 'macOS 上强制开启。' : undefined}
+          unavailableReason={isMacOS ? 'macOS 上强制开启。' : undefined}
           control={<span className="text-[var(--color-ink-2)] text-xs">已开启</span>}
         />
       </SettingsGroup>

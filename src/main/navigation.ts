@@ -2,12 +2,6 @@ import type { SidebarItem } from '@/ui/Sidebar'
 
 export type PageId = 'transcribe' | 'audio' | 'permissions' | 'translate' | 'overlay' | 'general' | 'models' | 'about'
 
-export function navItem(id: PageId): SidebarItem<PageId> {
-  const found = NAV.find((n) => n.id === id)
-  if (!found) throw new Error(`导航项缺失：${id}`)
-  return found
-}
-
 export const NAV: SidebarItem<PageId>[] = [
   {
     id: 'transcribe',

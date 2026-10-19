@@ -13,7 +13,6 @@ interface Props {
   icon?: IconName
   disabled?: boolean
   pending?: boolean
-  type?: 'button' | 'submit'
   className?: string
 }
 
@@ -25,12 +24,11 @@ export function Button({
   icon,
   disabled,
   pending,
-  type = 'button',
   className,
 }: Props) {
   return (
     <button
-      type={type}
+      type="button"
       onClick={onClick}
       disabled={disabled || pending}
       className={cn(

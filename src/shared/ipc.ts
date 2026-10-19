@@ -7,7 +7,6 @@ import type {
   InputDevice,
   MicRequestResult,
   ModelJobStatus,
-  ModelLicenseDto,
   ModelStatus,
   ModelsList,
   OverlayConfig,
@@ -22,9 +21,8 @@ import type {
 import {
   AudioSourceKind,
   MicPermission,
-  ModelKind,
   ModelPhase,
-  OverlayMode,
+  type OverlayMode,
   SystemAudioVerdict,
   Theme,
   TranslateEngine,
@@ -32,32 +30,17 @@ import {
 
 export type {
   AudioStatus,
-  EndpointConfig,
   InputDevice,
-  MicRequestResult,
   ModelJobStatus,
-  ModelLicenseDto,
   ModelStatus,
   ModelsList,
   OverlayConfig,
   PermissionSnapshot,
   Preferences,
   PrefsPatch,
-  SessionInfo,
   SystemAudioProbe,
-  TaskStatus,
-  TranscriptSegment,
 }
-export {
-  AudioSourceKind,
-  MicPermission,
-  ModelKind,
-  ModelPhase,
-  OverlayMode,
-  SystemAudioVerdict,
-  Theme,
-  TranslateEngine,
-}
+export { AudioSourceKind, MicPermission, ModelPhase, SystemAudioVerdict, Theme, TranslateEngine }
 
 export async function call<T = unknown>(name: string, args: Record<string, unknown> = {}): Promise<T> {
   return invoke<T>('dispatch', { name, args })
@@ -190,7 +173,7 @@ export function openPrivacySettings(pane: PrivacyPane = 'systemAudio'): Promise<
   return call<null>('open_privacy_settings', { pane })
 }
 
-export type PermissionKind = 'microphone' | 'systemAudio'
+export type PermissionKind = PrivacyPane
 
 export interface CmdPermissionError {
   kind: 'permission'
