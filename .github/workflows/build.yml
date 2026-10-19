@@ -3,7 +3,7 @@ name: Build & Release
 on:
   push:
     tags: ['v*']
-  # SPEC §5.2：模型是外部下载步骤，首次跑通前 MUST NOT 进发布流程——先用手动触发验证整条链
+  # SPEC §5.2：首次跑通前 MUST NOT 进发布流程，先手动触发验证整条链
   workflow_dispatch:
 
 jobs:
@@ -30,8 +30,7 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      # fetch-mt-model.mjs 用 `python3 -m venv` 建 venv，不钉版本就会用 runner 自带的解释器，
-      # 而 torch 要求 >= 3.10——系统自带的 3.9 会让 pip 报「(from versions: none)」（一个候选都没有）。
+      # 钉版本：torch 要求 Python >= 3.10，runner 自带的 3.9 会让 pip 报「(from versions: none)」
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -82,17 +81,13 @@ jobs:
           path: src-tauri/target/release/bundle/dmg/*.dmg
           compression-level: 0
 
-  # 两个平台的完整打包，产物挂进 Release。
-  # ⚠️ 这两条路径**从来没有在真机上跑过**——CI 只证明它能编过、能打包。
-  # 采集（WASAPI / PipeWire）、置顶、托盘、热键在非 macOS 上的行为全是未知数。
+  # Windows/Linux 只验证过编译与打包，采集/置顶/托盘/热键未在真机验证。
   build-windows:
     name: Build (Windows)
     runs-on: windows-latest
     timeout-minutes: 60
     env:
-      # ct2rs 与 sherpa-onnx 的 CMake 构建用 /MT（静态 CRT），而 Rust 在 windows-msvc 上
-      # 默认链 /MD（动态）→ LNK2038「RuntimeLibrary mismatch」+ LNK1169 重复符号。
-      # 把 Rust 侧也对齐到静态 CRT 是唯一不必打补丁改各依赖 build.rs 的方向。
+      # ct2rs/sherpa-onnx 的 CMake 构建用 /MT，Rust 默认 /MD，不对齐会报 LNK2038/LNK1169
       RUSTFLAGS: -C target-feature=+crt-static
     steps:
       - name: Checkout
@@ -169,8 +164,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      # CI 里没有 FUSE，AppImage 工具链要显式走解包运行
+      # CI 无 FUSE，AppImage 工具链需解包运行
       APPIMAGE_EXTRACT_AND_RUN: 1
+      # 不要删：sherpa-onnx 的 onnxruntime 用旧 C++ ABI，CTranslate2 默认新 ABI，
+      # 混链会导致点「开始转写」闪退
+      CXXFLAGS: -D_GLIBCXX_USE_CXX11_ABI=0
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -198,6 +196,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          # CXXFLAGS 改了必须换 key，否则会复用按新 ABI 编好的 CTranslate2
+          key: cxx-abi-0
 
       - name: Cache typeshare CLI
         uses: actions/cache@v4
@@ -264,9 +264,8 @@ jobs:
           name: AudioScript ${{ github.ref_name }}
           generate_release_notes: true
           fail_on_unmatched_files: true
-          # ⚠️ 路径必须带上 archive 里的子目录层级：upload-artifact 以「所有匹配文件的
-          # 最近公共祖先」为根，Windows 的 nsis/ 与 msi/ 因此是子目录而非文件。
-          # 少一层就会得到「Pattern ... does not match any files」并让整个 release 失败。
+          # upload-artifact 以匹配文件的公共祖先为根，Windows 的 nsis/、msi/ 是子目录；
+          # 少一层会报「Pattern ... does not match any files」并让 release 失败。
           files: |
             AudioScript-macOS-ARM/*.dmg
             AudioScript-Windows-x64/nsis/*.exe
