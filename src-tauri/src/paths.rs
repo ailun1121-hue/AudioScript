@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
-use crate::asr::DEFAULT_MODEL_DIR_NAME;
 use crate::config::{AsrModelTier, MtModelTier};
 use crate::models::catalog::{self, CatalogEntry};
 
@@ -126,40 +125,45 @@ fn first_existing(
     ))
 }
 
+fn locate(
+    roots: &ModelSearchRoots,
+    bundled: bool,
+    rel: &str,
+    what: String,
+    remedy: String,
+) -> Result<ResolvedModelDir, String> {
+    let mut candidates = Vec::new();
+    add_candidate(&mut candidates, &roots.env, rel, ResolutionVia::EnvOverride);
+    if bundled {
+        add_candidate(
+            &mut candidates,
+            &roots.bundled,
+            rel,
+            ResolutionVia::BundledResource,
+        );
+        add_candidate(
+            &mut candidates,
+            &roots.dev,
+            rel,
+            ResolutionVia::DevSourceTree,
+        );
+    } else {
+        add_candidate(&mut candidates, &roots.user, rel, ResolutionVia::UserData);
+    }
+    first_existing(candidates, &what, &remedy)
+}
+
 pub fn locate_asr(
     roots: &ModelSearchRoots,
     tier: AsrModelTier,
 ) -> Result<ResolvedModelDir, String> {
     let entry = catalog::asr_entry(tier);
-    let rel = entry.installed_dir();
-    let mut candidates = Vec::new();
-
-    match tier {
-        AsrModelTier::Builtin => {
-            add_candidate(&mut candidates, &roots.env, rel, ResolutionVia::EnvOverride);
-            add_candidate(
-                &mut candidates,
-                &roots.bundled,
-                rel,
-                ResolutionVia::BundledResource,
-            );
-            add_candidate(
-                &mut candidates,
-                &roots.dev,
-                rel,
-                ResolutionVia::DevSourceTree,
-            );
-        }
-        AsrModelTier::HighAccuracy => {
-            add_candidate(&mut candidates, &roots.env, rel, ResolutionVia::EnvOverride);
-            add_candidate(&mut candidates, &roots.user, rel, ResolutionVia::UserData);
-        }
-    }
-
-    first_existing(
-        candidates,
-        &format!("语音识别模型「{}」", entry.title),
-        &format!(
+    locate(
+        roots,
+        matches!(tier, AsrModelTier::Builtin),
+        entry.installed_dir(),
+        format!("语音识别模型「{}」", entry.title),
+        format!(
             "→ 打开「模型」页下载该模型，或切换回内置模型。\n\
              （若设置了 {ENV_MODEL_DIR}，它也会被优先查找。）"
         ),
@@ -171,35 +175,12 @@ pub fn locate_mt_root(
     tier: MtModelTier,
 ) -> Result<ResolvedModelDir, String> {
     let entry = catalog::mt_entry(tier);
-    let rel = entry.installed_dir();
-    let mut candidates = Vec::new();
-
-    match tier {
-        MtModelTier::Base => {
-            add_candidate(&mut candidates, &roots.env, rel, ResolutionVia::EnvOverride);
-            add_candidate(
-                &mut candidates,
-                &roots.bundled,
-                rel,
-                ResolutionVia::BundledResource,
-            );
-            add_candidate(
-                &mut candidates,
-                &roots.dev,
-                rel,
-                ResolutionVia::DevSourceTree,
-            );
-        }
-        MtModelTier::Big => {
-            add_candidate(&mut candidates, &roots.env, rel, ResolutionVia::EnvOverride);
-            add_candidate(&mut candidates, &roots.user, rel, ResolutionVia::UserData);
-        }
-    }
-
-    first_existing(
-        candidates,
-        &format!("翻译模型「{}」", entry.title),
-        &format!(
+    locate(
+        roots,
+        matches!(tier, MtModelTier::Base),
+        entry.installed_dir(),
+        format!("翻译模型「{}」", entry.title),
+        format!(
             "→ 打开「模型」页下载该模型，或切换回基础模型。\n\
              （若设置了 {ENV_MODEL_DIR}，它也会被优先查找。）"
         ),
@@ -293,58 +274,6 @@ pub fn model_dir_is_complete(dir: &Path) -> Result<(), String> {
         missing.join(", "),
         names.join(", ")
     ))
-}
-
-pub fn resolve_models_root(app: &AppHandle) -> Result<ResolvedModelDir, String> {
-    let mut tried: Vec<String> = Vec::new();
-
-    if let Ok(raw) = std::env::var(ENV_MODEL_DIR) {
-        let p = PathBuf::from(&raw);
-        if p.is_dir() {
-            return Ok(resolved(p, ResolutionVia::EnvOverride));
-        }
-        tried.push(format!("{ENV_MODEL_DIR}={raw} （目录不存在）"));
-    }
-
-    match app.path().resource_dir() {
-        Ok(res) => {
-            let p = res.join("models");
-            if p.is_dir() {
-                return Ok(resolved(p, ResolutionVia::BundledResource));
-            }
-            tried.push(format!("{} （不存在）", p.display()));
-        }
-        Err(e) => tried.push(format!("resource_dir() 解析失败：{e}")),
-    }
-
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/models");
-    if p.is_dir() {
-        return Ok(resolved(p, ResolutionVia::DevSourceTree));
-    }
-    tried.push(format!("{} （不存在）", p.display()));
-
-    Err(format!(
-        "找不到模型根目录。已尝试：\n  - {}\n\n\
-         若是全新克隆，先运行 `pnpm fetch:model` 下载模型。",
-        tried.join("\n  - ")
-    ))
-}
-
-pub fn resolve_model_dir(app: &AppHandle) -> Result<ResolvedModelDir, String> {
-    let mut root = resolve_models_root(app)?;
-    root.path = root.path.join(DEFAULT_MODEL_DIR_NAME);
-
-    if !root.path.is_dir() {
-        return Err(format!(
-            "找不到 ASR 模型目录：{}\n→ 运行 `pnpm fetch:model` 下载",
-            root.path.display()
-        ));
-    }
-    Ok(root)
-}
-
-pub fn resolve_mt_model_root(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(resolve_models_root(app)?.path.join("mt"))
 }
 
 pub fn log_startup_selfcheck(app: &AppHandle) {

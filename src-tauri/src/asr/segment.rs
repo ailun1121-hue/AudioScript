@@ -46,10 +46,6 @@ impl SegmentBuilder {
         }
     }
 
-    pub fn id_of(&self, utterance: i64) -> Option<&str> {
-        self.ids.get(&utterance).map(String::as_str)
-    }
-
     pub fn forget(&mut self, utterance: i64) {
         self.ids.remove(&utterance);
         self.revisions.remove(&utterance);

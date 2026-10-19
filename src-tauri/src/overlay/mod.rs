@@ -214,7 +214,7 @@ fn broadcast_visibility(app: &AppHandle, visible: bool) {
     }
 }
 
-pub fn set_mode(app: &AppHandle, mode: OverlayMode) -> Result<OverlayMode, String> {
+fn apply_mode(app: &AppHandle, mode: OverlayMode) -> Result<(), String> {
     let frame = Frame::get(app)?;
     let state = app.state::<OverlayState>();
 
@@ -230,10 +230,15 @@ pub fn set_mode(app: &AppHandle, mode: OverlayMode) -> Result<OverlayMode, Strin
     }
 
     state.set_mode(mode);
+    Ok(())
+}
+
+pub fn set_mode(app: &AppHandle, mode: OverlayMode) -> Result<OverlayMode, String> {
+    apply_mode(app, mode)?;
     if let Err(e) = crate::prefs::update(app, |p| p.overlay.mode = mode) {
         tracing::error!("悬浮窗交互模式保存失败：{e}（重启后会回到上次落盘的模式）");
     }
-    broadcast(app, &state);
+    broadcast(app, &app.state::<OverlayState>());
     Ok(mode)
 }
 
@@ -247,7 +252,7 @@ pub fn set_config(app: &AppHandle, cfg: OverlayConfig) -> Result<OverlayConfig, 
     let previous = state.config();
 
     if cfg.mode != state.mode() {
-        set_mode(app, cfg.mode)?;
+        apply_mode(app, cfg.mode)?;
     }
 
     #[cfg(target_os = "macos")]
@@ -260,6 +265,9 @@ pub fn set_config(app: &AppHandle, cfg: OverlayConfig) -> Result<OverlayConfig, 
     state.replace(cfg.clone());
     if previous.font_size != cfg.font_size || previous.max_lines != cfg.max_lines {
         fit_height_to_lines(app, &cfg);
+    }
+    if let Err(e) = crate::prefs::update(app, |p| p.overlay = cfg.clone()) {
+        tracing::error!("悬浮窗配置保存失败，本次调整不会被记住：{e}");
     }
     broadcast(app, &state);
     Ok(cfg)

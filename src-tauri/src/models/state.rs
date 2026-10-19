@@ -5,7 +5,6 @@ use super::status::ModelJobStatus;
 
 pub struct ActiveJob {
     pub job_id: String,
-    pub model_id: String,
     pub cancel: Arc<AtomicBool>,
     pub status: Arc<Mutex<ModelJobStatus>>,
 }
@@ -30,11 +29,6 @@ impl ModelState {
             .is_some()
     }
 
-    pub fn current_model(&self) -> Option<String> {
-        let guard = self.job.lock().unwrap_or_else(|e| e.into_inner());
-        guard.as_ref().map(|job| job.model_id.clone())
-    }
-
     pub fn start(
         &self,
         model_id: &str,
@@ -53,7 +47,6 @@ impl ModelState {
 
         *guard = Some(ActiveJob {
             job_id: job_id.clone(),
-            model_id: model_id.to_owned(),
             cancel: Arc::clone(&cancel),
             status: Arc::clone(&status),
         });

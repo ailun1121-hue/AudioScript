@@ -74,18 +74,6 @@ impl JobQueue {
         drop(g);
         self.ready.notify_all();
     }
-
-    pub fn len(&self) -> usize {
-        self.inner
-            .lock()
-            .expect("job queue mutex poisoned")
-            .items
-            .len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
 }
 
 impl Drop for JobQueue {

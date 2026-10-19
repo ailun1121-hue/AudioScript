@@ -1,19 +1,15 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use tauri::{AppHandle, Manager};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+
+pub const LOG_FILE_PREFIX: &str = "audioscript.log";
 
 #[derive(Debug)]
 pub struct LogGuard(#[allow(dead_code)] tracing_appender::non_blocking::WorkerGuard);
 
 #[derive(Debug, Clone)]
 pub struct LogDir(pub PathBuf);
-
-impl LogDir {
-    pub fn path(&self) -> &Path {
-        &self.0
-    }
-}
 
 pub fn init(app: &AppHandle) -> PathBuf {
     let fallback = std::env::temp_dir().join("audioscript-logs");
@@ -29,7 +25,7 @@ pub fn init(app: &AppHandle) -> PathBuf {
         return dir;
     }
 
-    let file = tracing_appender::rolling::daily(&dir, "audioscript.log");
+    let file = tracing_appender::rolling::daily(&dir, LOG_FILE_PREFIX);
     let (writer, guard) = tracing_appender::non_blocking(file);
     app.manage(LogGuard(guard));
 

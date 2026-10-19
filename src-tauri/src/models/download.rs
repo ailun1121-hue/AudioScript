@@ -6,9 +6,7 @@ use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
 
-use super::ModelError;
-
-const CHUNK: usize = 64 * 1024;
+use super::{ModelError, IO_CHUNK};
 
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(150);
 
@@ -45,7 +43,7 @@ pub fn download_verified(
     let mut reader = response.into_reader();
     let mut file = File::create(dest)?;
     let mut hasher = Sha256::new();
-    let mut buffer = [0u8; CHUNK];
+    let mut buffer = [0u8; IO_CHUNK];
     let mut received = 0u64;
     let mut last_report = Instant::now();
 

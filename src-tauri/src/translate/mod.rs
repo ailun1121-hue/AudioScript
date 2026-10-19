@@ -9,9 +9,6 @@ pub enum TranslateError {
     #[error("翻译引擎未初始化")]
     NotInitialized,
 
-    #[error("配置无效：{0}")]
-    InvalidConfig(String),
-
     #[error("模型加载失败：{0}")]
     ModelLoad(String),
 
@@ -20,9 +17,6 @@ pub enum TranslateError {
 
     #[error("语言对不支持：{from} → {to}")]
     UnsupportedPair { from: String, to: String },
-
-    #[error("翻译超时")]
-    Timeout,
 
     #[error("译文无效（{reason}）：翻译方向可能设置错误")]
     Degenerate { reason: String },
@@ -92,12 +86,6 @@ impl TranslateCaps {
         incremental: false,
         offline: true,
         typical_latency_ms: 300,
-    };
-
-    pub const REMOTE_API: Self = Self {
-        incremental: false,
-        offline: false,
-        typical_latency_ms: 800,
     };
 }
 

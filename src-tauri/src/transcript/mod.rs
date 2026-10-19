@@ -191,12 +191,8 @@ impl TranscriptStore {
         self.index.get(id).map(|&pos| &self.segments[pos])
     }
 
-    pub fn len(&self) -> usize {
+    pub fn segment_count(&self) -> usize {
         self.segments.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.segments.is_empty()
     }
 }
 
@@ -323,7 +319,7 @@ mod tests {
         s.apply(vec![seg("a", "你好世界", SegmentState::Partial, 2)])
             .unwrap();
         assert_eq!(s.get("a").unwrap().text, "你好世界");
-        assert_eq!(s.len(), 1, "覆盖不应产生新段");
+        assert_eq!(s.segment_count(), 1, "覆盖不应产生新段");
     }
 
     #[test]
@@ -334,7 +330,7 @@ mod tests {
         s.apply(vec![seg("a", "今天下午三点开会", SegmentState::Final, 2)])
             .unwrap();
 
-        assert_eq!(s.len(), 1);
+        assert_eq!(s.segment_count(), 1);
         assert_eq!(s.get("a").unwrap().state, SegmentState::Final);
         assert_eq!(s.get("a").unwrap().text, "今天下午三点开会");
     }
@@ -397,7 +393,7 @@ mod tests {
         ])
         .unwrap();
 
-        assert_eq!(s.len(), 2);
+        assert_eq!(s.segment_count(), 2);
         assert_eq!(s.get("a").unwrap().state, SegmentState::Final);
         assert_eq!(s.get("b").unwrap().state, SegmentState::Partial);
     }

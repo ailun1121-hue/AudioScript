@@ -28,10 +28,6 @@ pub fn start(app: AppHandle) {
         .ok();
 }
 
-pub fn stop() {
-    RUNNING.store(false, Ordering::SeqCst);
-}
-
 fn check_and_repair(app: &AppHandle) {
     use crate::overlay::{Frame, LABEL};
 
@@ -53,14 +49,10 @@ fn check_and_repair(app: &AppHandle) {
         crate::overlay::native::macos::apply_overlay_panel_attributes(panel);
     }
 
-    repair_frame_if_offscreen(app, panel, LABEL);
+    repair_frame_if_offscreen(panel, LABEL);
 }
 
-fn repair_frame_if_offscreen(
-    _app: &AppHandle,
-    panel: &tauri_nspanel::PanelHandle<tauri::Wry>,
-    label: &str,
-) {
+fn repair_frame_if_offscreen(panel: &tauri_nspanel::PanelHandle<tauri::Wry>, label: &str) {
     let ns_panel = panel.as_panel();
     let frame = ns_panel.frame();
 

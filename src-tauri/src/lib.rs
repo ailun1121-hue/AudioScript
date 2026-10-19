@@ -115,13 +115,15 @@ pub fn run() {
                 tracing::error!("{e}");
             }
 
-            paths::log_startup_selfcheck(&handle);
             spawn_main_thread_watchdog(&handle);
 
             let cleanup_handle = handle.clone();
             if let Err(e) = std::thread::Builder::new()
                 .name("models-cleanup".into())
-                .spawn(move || models::install::cleanup_stale(&cleanup_handle))
+                .spawn(move || {
+                    paths::log_startup_selfcheck(&cleanup_handle);
+                    models::install::cleanup_stale(&cleanup_handle);
+                })
             {
                 tracing::warn!("无法启动模型临时目录清理线程：{e}");
             }

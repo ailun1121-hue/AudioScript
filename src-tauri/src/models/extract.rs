@@ -4,9 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::catalog::{ArchiveFormat, CatalogEntry};
-use super::ModelError;
-
-const CHUNK: usize = 64 * 1024;
+use super::{ModelError, IO_CHUNK};
 
 pub struct ExtractSpec<'a> {
     pub format: ArchiveFormat,
@@ -86,7 +84,7 @@ pub fn extract_archive(
     };
     let mut tar = tar::Archive::new(reader);
     let mut total = 0u64;
-    let mut buffer = [0u8; CHUNK];
+    let mut buffer = [0u8; IO_CHUNK];
 
     for entry in tar.entries().map_err(|e| ModelError::Extract(e.to_string()))? {
         if cancel.load(Ordering::SeqCst) {

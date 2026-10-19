@@ -136,10 +136,7 @@ pub fn init_emitter(app: &AppHandle) -> Result<(), String> {
             loop {
                 let event = match rx.recv_timeout(Duration::from_secs(5)) {
                     Ok(event) => event,
-                    Err(RecvTimeoutError::Timeout) => {
-                        tracing::debug!("事件线程心跳");
-                        continue;
-                    }
+                    Err(RecvTimeoutError::Timeout) => continue,
                     Err(RecvTimeoutError::Disconnected) => break,
                 };
 
@@ -255,7 +252,7 @@ pub struct SessionState {
     status: Mutex<TaskStatus>,
     started_at: Mutex<Option<Instant>>,
     first_text_logged: AtomicBool,
-    audio_started_at: Mutex<Option<Instant>>,
+    audio_started_at: Arc<Mutex<Option<Instant>>>,
     teardown_active: AtomicBool,
 }
 
@@ -483,7 +480,6 @@ pub fn start(
 
     let store = Arc::clone(&state.store);
     let engine_for_sink = Arc::clone(&engine);
-    let app_for_sink = app.clone();
     let queue_for_sink = Arc::clone(&queue);
     let events_for_sink = events.clone();
 
@@ -502,13 +498,10 @@ pub fn start(
     let mut level_emit_failed = false;
 
     tracing::info!("启动采集");
+    let audio_clock = Arc::clone(&state.audio_started_at);
     let capture = audio::start(source, device.as_deref(), move |chunk: &[f32]| {
         {
-            let state = app_for_sink.state::<SessionState>();
-            let mut clock = state
-                .audio_started_at
-                .lock()
-                .expect("audio start mutex poisoned");
+            let mut clock = audio_clock.lock().expect("audio start mutex poisoned");
             if clock.is_none() {
                 *clock = Some(Instant::now());
             }
@@ -521,11 +514,7 @@ pub fn start(
         level_n += chunk.len();
 
         if last_level.elapsed() >= LEVEL_INTERVAL {
-            let level = if level_n > 0 {
-                (level_sq / level_n as f64).sqrt()
-            } else {
-                0.0
-            };
+            let level = audio::rms(level_sq, level_n);
             if events_for_sink.send(UiEvent::Level(level)).is_err() && !level_emit_failed {
                 level_emit_failed = true;
                 tracing::error!("事件线程已退出，后续电平不再广播");
@@ -536,12 +525,11 @@ pub fn start(
         }
 
         if last_beat.elapsed() >= HEARTBEAT_INTERVAL {
-            let rms = if energy_n > 0 {
-                (energy / energy_n as f64).sqrt()
-            } else {
-                0.0
-            };
-            let count = store.lock().expect("transcript store mutex poisoned").len();
+            let rms = audio::rms(energy, energy_n);
+            let count = store
+                .lock()
+                .expect("transcript store mutex poisoned")
+                .segment_count();
             let silent = rms < SILENCE_RMS;
 
             if silent {
@@ -616,9 +604,7 @@ pub fn start(
                 Ok(changed) => {
                     for seg in &changed {
                         if seg.state != crate::transcript::SegmentState::Partial {
-                            let audio_ms: i128 = app_for_sink
-                                .state::<SessionState>()
-                                .audio_started_at
+                            let audio_ms: i128 = audio_clock
                                 .lock()
                                 .expect("audio start mutex poisoned")
                                 .map(|a| a.elapsed().as_millis() as i128)

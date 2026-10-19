@@ -176,8 +176,7 @@ fn run_install(
     );
 
     if let Err(e) = result {
-        std::fs::remove_file(&part).ok();
-        std::fs::remove_dir_all(&staging_root).ok();
+        discard_staging(&part, &staging_root);
         return Err(e);
     }
 
@@ -189,16 +188,14 @@ fn run_install(
         extract::extract_archive(&part, &spec, &payload, cancel)?;
         Ok(())
     })() {
-        std::fs::remove_file(&part).ok();
-        std::fs::remove_dir_all(&staging_root).ok();
+        discard_staging(&part, &staging_root);
         return Err(e);
     }
 
     set_phase(app, status, ModelPhase::Validating, None);
     let missing = missing_files(&payload, entry)?;
     if !missing.is_empty() {
-        std::fs::remove_file(&part).ok();
-        std::fs::remove_dir_all(&staging_root).ok();
+        discard_staging(&part, &staging_root);
         return Err(ModelError::Incomplete(missing.join(", ")));
     }
 
@@ -226,22 +223,25 @@ fn run_install(
         if moved_old {
             std::fs::rename(&old, &final_dir).ok();
         }
-        std::fs::remove_file(&part).ok();
-        std::fs::remove_dir_all(&staging_root).ok();
+        discard_staging(&part, &staging_root);
         return Err(ModelError::Io(format!(
             "安装模型失败（可能文件被占用）：{}：{e}",
             final_dir.display()
         )));
     }
 
-    std::fs::remove_file(&part).ok();
-    std::fs::remove_dir_all(&staging_root).ok();
+    discard_staging(&part, &staging_root);
     if moved_old {
         std::fs::remove_dir_all(&old).ok();
     }
 
     tracing::info!(model = %entry.id, dir = %final_dir.display(), "模型安装完成");
     Ok(())
+}
+
+fn discard_staging(part: &std::path::Path, staging_root: &std::path::Path) {
+    std::fs::remove_file(part).ok();
+    std::fs::remove_dir_all(staging_root).ok();
 }
 
 fn update_download(

@@ -73,6 +73,13 @@ where
         })
         .map_err(|e| CmdError::Failed(format!("启动后台线程失败：{e}")))?;
 
+    await_task(rx, timeout).await
+}
+
+async fn await_task<R>(
+    rx: tokio::sync::oneshot::Receiver<R>,
+    timeout: std::time::Duration,
+) -> Result<R, CmdError> {
     match tokio::time::timeout(timeout, rx).await {
         Ok(Ok(value)) => Ok(value),
         Ok(Err(_)) => Err(CmdError::Failed("后台任务异常退出".into())),
@@ -136,11 +143,7 @@ where
         }))
         .map_err(|_| CmdError::Failed("命令执行线程已退出".into()))?;
 
-    match tokio::time::timeout(timeout, rx).await {
-        Ok(Ok(value)) => Ok(value),
-        Ok(Err(_)) => Err(CmdError::Failed("后台任务异常退出".into())),
-        Err(_) => Err(CmdError::Failed("后台任务超时，请重试".into())),
-    }
+    await_task(rx, timeout).await
 }
 
 pub async fn route_async(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdError> {
@@ -168,10 +171,7 @@ pub fn route(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdErro
             .map(|v| json!(v))
             .map_err(CmdError::Failed),
         "overlay_set_mode" => {
-            let raw = args
-                .get("mode")
-                .and_then(Value::as_str)
-                .ok_or_else(|| CmdError::BadArgs("缺少 mode".into()))?;
+            let raw = str_arg(args, "mode")?;
             let mode = OverlayMode::parse(raw)
                 .ok_or_else(|| CmdError::BadArgs(format!("未知模式 {raw}")))?;
             overlay::set_mode(app, mode)
@@ -184,12 +184,7 @@ pub fn route(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdErro
         "prefs_get" => Ok(json!(prefs::load(app))),
 
         "prefs_set" => {
-            let patch: PrefsPatch = args
-                .get("patch")
-                .map(|v| serde_json::from_value(v.clone()))
-                .transpose()
-                .map_err(|e| CmdError::BadArgs(format!("patch 解析失败：{e}")))?
-                .ok_or_else(|| CmdError::BadArgs("缺少 patch".into()))?;
+            let patch: PrefsPatch = json_arg(args, "patch")?;
 
             patch.validate().map_err(CmdError::BadArgs)?;
 
@@ -243,10 +238,7 @@ pub fn route(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdErro
         }
 
         "open_url" => {
-            let url = args
-                .get("url")
-                .and_then(Value::as_str)
-                .ok_or_else(|| CmdError::BadArgs("缺少 url".into()))?;
+            let url = str_arg(args, "url")?;
             if !is_allowed_link(url) {
                 return Err(CmdError::BadArgs(format!("拒绝打开非项目链接：{url}")));
             }
@@ -275,10 +267,7 @@ pub fn route(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdErro
                 .get("stamp")
                 .and_then(Value::as_str)
                 .unwrap_or("export");
-            let path = args
-                .get("path")
-                .and_then(Value::as_str)
-                .ok_or_else(|| CmdError::BadArgs("缺少 path".into()))?;
+            let path = str_arg(args, "path")?;
             let path = export_transcript(app, stamp, std::path::Path::new(path))?;
             Ok(json!({ "path": path.display().to_string() }))
         }
@@ -314,39 +303,26 @@ pub fn route(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdErro
         }
 
         "model_download" => {
-            let id = args
-                .get("modelId")
-                .and_then(Value::as_str)
-                .ok_or_else(|| CmdError::BadArgs("缺少 modelId".into()))?;
+            let id = str_arg(args, "modelId")?;
             let job_id =
                 crate::models::install::start_download(app, id).map_err(model_cmd_error)?;
             Ok(json!({ "jobId": job_id }))
         }
 
         "model_cancel" => {
-            let job_id = args
-                .get("jobId")
-                .and_then(Value::as_str)
-                .ok_or_else(|| CmdError::BadArgs("缺少 jobId".into()))?;
+            let job_id = str_arg(args, "jobId")?;
             Ok(json!({ "cancelled": crate::models::install::cancel(app, job_id) }))
         }
 
         "model_remove" => {
-            let id = args
-                .get("modelId")
-                .and_then(Value::as_str)
-                .ok_or_else(|| CmdError::BadArgs("缺少 modelId".into()))?;
+            let id = str_arg(args, "modelId")?;
             crate::models::install::remove_model(app, id).map_err(model_cmd_error)?;
             Ok(json!(crate::models::status::inspect(app)))
         }
 
         "model_select" => {
-            let id = args
-                .get("modelId")
-                .and_then(Value::as_str)
-                .ok_or_else(|| CmdError::BadArgs("缺少 modelId".into()))?;
-            select_model(app, id)?;
-            Ok(json!(crate::models::status::inspect(app)))
+            let id = str_arg(args, "modelId")?;
+            Ok(json!(select_model(app, id)?))
         }
 
         "config_defaults" => Ok(json!({
@@ -363,20 +339,9 @@ pub fn route(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdErro
         "overlay_visible" => Ok(json!(overlay::is_visible(app))),
 
         "overlay_config_set" => {
-            let cfg: OverlayConfig = args
-                .get("config")
-                .map(|v| serde_json::from_value(v.clone()))
-                .transpose()
-                .map_err(|e| CmdError::BadArgs(format!("config 解析失败：{e}")))?
-                .ok_or_else(|| CmdError::BadArgs("缺少 config".into()))?;
+            let cfg: OverlayConfig = json_arg(args, "config")?;
 
             let applied = overlay::set_config(app, cfg).map_err(CmdError::Failed)?;
-
-            let ov = applied.clone();
-            if let Err(e) = prefs::update(app, |p| p.overlay = ov) {
-                tracing::error!("悬浮窗配置保存失败，本次调整不会被记住：{e}");
-            }
-
             Ok(json!(applied))
         }
 
@@ -384,7 +349,7 @@ pub fn route(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdErro
             let source = args
                 .get("source")
                 .and_then(Value::as_str)
-                .and_then(parse_source)
+                .and_then(audio::AudioSourceKind::parse)
                 .unwrap_or_default();
             audio::list_devices(source)
                 .map(|d| json!(d))
@@ -408,7 +373,7 @@ pub fn route(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdErro
             let source = args
                 .get("source")
                 .and_then(Value::as_str)
-                .and_then(parse_source)
+                .and_then(audio::AudioSourceKind::parse)
                 .unwrap_or_default();
 
             let mut cfg = cfg;
@@ -470,14 +435,8 @@ pub fn route(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdErro
         "shortcuts_get" => Ok(json!(shortcut::list(app))),
 
         "shortcuts_set" => {
-            let id = args
-                .get("id")
-                .and_then(Value::as_str)
-                .ok_or_else(|| CmdError::BadArgs("缺少 id".into()))?;
-            let accelerator = args
-                .get("accelerator")
-                .and_then(Value::as_str)
-                .ok_or_else(|| CmdError::BadArgs("缺少 accelerator".into()))?;
+            let id = str_arg(args, "id")?;
+            let accelerator = str_arg(args, "accelerator")?;
 
             shortcut::rebind(app, id, accelerator)
                 .map(|list| json!(list))
@@ -488,13 +447,18 @@ pub fn route(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdErro
     }
 }
 
-fn parse_source(s: &str) -> Option<audio::AudioSourceKind> {
-    match s {
-        "mic" => Some(audio::AudioSourceKind::Mic),
-        "loopback" => Some(audio::AudioSourceKind::Loopback),
-        "mix" => Some(audio::AudioSourceKind::Mix),
-        _ => None,
-    }
+fn str_arg<'a>(args: &'a Value, key: &str) -> Result<&'a str, CmdError> {
+    args.get(key)
+        .and_then(Value::as_str)
+        .ok_or_else(|| CmdError::BadArgs(format!("缺少 {key}")))
+}
+
+fn json_arg<T: serde::de::DeserializeOwned>(args: &Value, key: &str) -> Result<T, CmdError> {
+    let value = args
+        .get(key)
+        .ok_or_else(|| CmdError::BadArgs(format!("缺少 {key}")))?;
+    serde_json::from_value(value.clone())
+        .map_err(|e| CmdError::BadArgs(format!("{key} 解析失败：{e}")))
 }
 
 fn app_info() -> Value {
@@ -549,7 +513,7 @@ fn export_transcript(
 
 fn is_allowed_link(url: &str) -> bool {
     const PREFIXES: [&str; 6] = [
-        "https://github.com/niyongsheng/AudioScript",
+        REPO_URL,
         "https://github.com/k2-fsa/sherpa-onnx",
         "https://github.com/Helsinki-NLP/Opus-MT",
         "https://huggingface.co/Helsinki-NLP/",
@@ -630,7 +594,11 @@ fn newest_log_stamp(dir: &std::path::Path) -> Option<String> {
         .ok()?
         .flatten()
         .filter_map(|e| e.file_name().to_str().map(str::to_owned))
-        .filter_map(|n| n.strip_prefix("audioscript.log.").map(str::to_owned))
+        .filter_map(|n| {
+            n.strip_prefix(crate::log::LOG_FILE_PREFIX)
+                .and_then(|rest| rest.strip_prefix('.'))
+                .map(str::to_owned)
+        })
         .collect();
     stamps.sort();
     stamps.pop()
@@ -650,20 +618,21 @@ fn model_cmd_error(e: crate::models::ModelError) -> CmdError {
     }
 }
 
-fn select_model(app: &AppHandle, id: &str) -> Result<(), CmdError> {
+fn select_model(app: &AppHandle, id: &str) -> Result<crate::models::status::ModelsList, CmdError> {
     use crate::config::{AsrModelTier, MtModelTier};
 
     let entry = crate::models::catalog::entry(id)
         .ok_or_else(|| CmdError::BadArgs(format!("未知模型：{id}")))?;
 
-    let list = crate::models::status::inspect(app);
-    let status = list
+    let mut list = crate::models::status::inspect(app);
+    let complete = list
         .asr
         .iter()
         .chain(list.mt.iter())
         .find(|m| m.id == id)
+        .map(|m| m.complete)
         .ok_or_else(|| CmdError::BadArgs(format!("未知模型：{id}")))?;
-    if !status.complete {
+    if !complete {
         return Err(CmdError::BadArgs(format!(
             "模型「{}」尚未安装或文件不完整，请先下载",
             entry.title
@@ -674,19 +643,23 @@ fn select_model(app: &AppHandle, id: &str) -> Result<(), CmdError> {
         crate::models::ModelKind::Asr => {
             let tier = AsrModelTier::parse(&entry.tier)
                 .ok_or_else(|| CmdError::BadArgs(format!("未知 ASR 档位：{}", entry.tier)))?;
-            crate::prefs::update(app, |p| p.asr_model_tier = tier)
-                .map_err(CmdError::Failed)?;
+            crate::prefs::update(app, |p| p.asr_model_tier = tier).map_err(CmdError::Failed)?;
+            for m in &mut list.asr {
+                m.selected = m.id == id;
+            }
         }
         crate::models::ModelKind::Mt => {
             let tier = MtModelTier::parse(&entry.tier)
                 .ok_or_else(|| CmdError::BadArgs(format!("未知 MT 档位：{}", entry.tier)))?;
-            crate::prefs::update(app, |p| p.mt_model_tier = tier)
-                .map_err(CmdError::Failed)?;
+            crate::prefs::update(app, |p| p.mt_model_tier = tier).map_err(CmdError::Failed)?;
+            for m in &mut list.mt {
+                m.selected = m.id == id;
+            }
         }
     }
 
     tracing::info!(model = %entry.id, "已切换模型（下次开始转写生效）");
-    Ok(())
+    Ok(list)
 }
 
 fn exe_mtime_ms() -> Option<u64> {

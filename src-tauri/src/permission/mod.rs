@@ -65,6 +65,19 @@ pub struct SystemAudioProbe {
     pub detail: Option<String>,
 }
 
+impl SystemAudioProbe {
+    fn inconclusive(active_processes: Option<u32>, detail: impl Into<String>) -> Self {
+        Self {
+            verdict: SystemAudioVerdict::Inconclusive,
+            rms: 0.0,
+            peak: 0.0,
+            samples: 0,
+            active_processes,
+            detail: Some(detail.into()),
+        }
+    }
+}
+
 pub fn snapshot() -> PermissionSnapshot {
     PermissionSnapshot {
         microphone: mic_state(),
@@ -79,16 +92,7 @@ pub fn request_mic() -> Result<MicRequestResult, String> {
 pub fn probe_system_audio(app: &AppHandle) -> SystemAudioProbe {
     let _guard = match PROBING.try_lock() {
         Ok(g) => g,
-        Err(_) => {
-            return SystemAudioProbe {
-                verdict: SystemAudioVerdict::Inconclusive,
-                rms: 0.0,
-                peak: 0.0,
-                samples: 0,
-                active_processes: None,
-                detail: Some("检测已在进行中".into()),
-            };
-        }
+        Err(_) => return SystemAudioProbe::inconclusive(None, "检测已在进行中"),
     };
 
     let active = match audio::any_output_active() {
@@ -124,16 +128,7 @@ pub fn probe_system_audio(app: &AppHandle) -> SystemAudioProbe {
                 }
                 break p;
             }
-            Err(e) => {
-                return SystemAudioProbe {
-                    verdict: SystemAudioVerdict::Inconclusive,
-                    rms: 0.0,
-                    peak: 0.0,
-                    samples: 0,
-                    active_processes: active,
-                    detail: Some(e.to_string()),
-                };
-            }
+            Err(e) => return SystemAudioProbe::inconclusive(active, e.to_string()),
         }
     };
 

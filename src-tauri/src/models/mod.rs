@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 
 pub const EVENT_MODEL_PROGRESS: &str = "models://progress";
 
+pub(crate) const IO_CHUNK: usize = 64 * 1024;
+
 #[typeshare::typeshare]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]

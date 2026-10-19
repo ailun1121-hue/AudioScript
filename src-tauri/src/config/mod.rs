@@ -141,10 +141,6 @@ impl TranslateEngine {
             Self::Mock => "mock",
         }
     }
-
-    pub fn leaves_device(self) -> bool {
-        matches!(self, Self::RemoteApi)
-    }
 }
 
 #[typeshare]
@@ -523,8 +519,7 @@ impl Preferences {
 
     pub fn apply_session(&mut self, source: &str, device: Option<String>) {
         self.audio_source = source.to_owned();
-        self.device_id = device;
-        self.device_id = self.device_id.take().filter(|s| !s.is_empty());
+        self.device_id = device.filter(|s| !s.is_empty());
     }
 
     pub fn target_lang(&self) -> &'static str {

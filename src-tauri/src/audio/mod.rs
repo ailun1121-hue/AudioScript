@@ -18,11 +18,10 @@ pub const ENV_DEVICE: &str = "AUDIOSCRIPT_DEVICE";
 pub const ENV_SOURCE: &str = "AUDIOSCRIPT_SOURCE";
 
 pub fn source_from_env() -> AudioSourceKind {
-    match std::env::var(ENV_SOURCE).ok().as_deref() {
-        Some("loopback") => AudioSourceKind::Loopback,
-        Some("mix") => AudioSourceKind::Mix,
-        _ => AudioSourceKind::Mic,
-    }
+    std::env::var(ENV_SOURCE)
+        .ok()
+        .and_then(|v| AudioSourceKind::parse(&v))
+        .unwrap_or(AudioSourceKind::Mic)
 }
 
 #[typeshare]
@@ -44,6 +43,15 @@ impl AudioSourceKind {
         }
     }
 
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "mic" => Some(Self::Mic),
+            "loopback" => Some(Self::Loopback),
+            "mix" => Some(Self::Mix),
+            _ => None,
+        }
+    }
+
     fn to_flexaudio(self) -> SourceKind {
         match self {
             Self::Mic => SourceKind::Mic,
@@ -55,9 +63,6 @@ impl AudioSourceKind {
 
 #[derive(Debug, thiserror::Error)]
 pub enum AudioError {
-    #[error("没有可用的输入设备")]
-    NoInputDevice,
-
     #[error("未找到名为 {0} 的音频设备")]
     DeviceNotFound(String),
 
@@ -357,11 +362,15 @@ impl ProbeAccum {
     }
 
     pub fn rms(&self) -> f64 {
-        if self.samples == 0 {
-            return 0.0;
-        }
-        (self.sum_sq / self.samples as f64).sqrt()
+        rms(self.sum_sq, self.samples as usize)
     }
+}
+
+pub fn rms(sum_sq: f64, samples: usize) -> f64 {
+    if samples == 0 {
+        return 0.0;
+    }
+    (sum_sq / samples as f64).sqrt()
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

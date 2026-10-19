@@ -112,13 +112,16 @@ pub fn pretty(accelerator: &str) -> String {
         .collect()
 }
 
-pub fn accelerator_for(app: &AppHandle, b: &Binding) -> String {
-    prefs::load(app)
-        .shortcuts
+fn accelerator_from(saved: &std::collections::HashMap<String, String>, b: &Binding) -> String {
+    saved
         .get(b.id)
         .filter(|s| !s.trim().is_empty())
         .cloned()
         .unwrap_or_else(|| b.default_accelerator.to_owned())
+}
+
+pub fn accelerator_for(app: &AppHandle, b: &Binding) -> String {
+    accelerator_from(&prefs::load(app).shortcuts, b)
 }
 
 pub fn list(app: &AppHandle) -> Vec<HotkeyInfo> {
@@ -129,7 +132,7 @@ pub fn list(app: &AppHandle) -> Vec<HotkeyInfo> {
         .into_iter()
         .map(|b| {
             let customized = saved.get(b.id).is_some_and(|s| !s.trim().is_empty());
-            let accel = accelerator_for(app, &b);
+            let accel = accelerator_from(&saved, &b);
             HotkeyInfo {
                 id: b.id.to_owned(),
                 label: b.label.to_owned(),
@@ -155,7 +158,7 @@ pub fn rebind(app: &AppHandle, id: &str, accelerator: &str) -> Result<Vec<Hotkey
         .find(|b| b.id == id)
         .ok_or_else(|| format!("未知的热键 id：{id}"))?;
 
-    let old = accelerator_for(app, b);
+    let old = accelerator_from(&prefs::load(app).shortcuts, b);
 
     accel
         .parse::<Shortcut>()
@@ -193,12 +196,13 @@ pub fn rebind(app: &AppHandle, id: &str, accelerator: &str) -> Result<Vec<Hotkey
 pub fn init(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<HotkeyState>();
     state.clear_failures();
+    let saved = prefs::load(app).shortcuts;
 
     for b in bindings() {
         let action = b.action;
         let id = b.id;
         let label = b.label;
-        let accel = accelerator_for(app, &b);
+        let accel = accelerator_from(&saved, &b);
 
         let result = app
             .global_shortcut()
