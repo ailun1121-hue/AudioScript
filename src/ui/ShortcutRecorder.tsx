@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { isMacOS } from '@/shared/platform'
 import { Button } from './Button'
 import { cn } from './cn'
 
@@ -26,9 +27,8 @@ export function ShortcutRecorder({ pretty, onRecord, disabled }: Props) {
       if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return
 
       const parts: string[] = []
-      const isMac = navigator.platform.toUpperCase().includes('MAC')
-      if (isMac ? e.metaKey : e.ctrlKey) parts.push('CmdOrControl')
-      else if (isMac ? e.ctrlKey : e.metaKey) parts.push('Control')
+      if (isMacOS ? e.metaKey : e.ctrlKey) parts.push('CmdOrControl')
+      else if (isMacOS ? e.ctrlKey : e.metaKey) parts.push('Control')
       if (e.altKey) parts.push('Alt')
       if (e.shiftKey) parts.push('Shift')
 

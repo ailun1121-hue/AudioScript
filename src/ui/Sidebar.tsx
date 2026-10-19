@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { cn } from './cn'
 import { Icon, type IconName } from './Icon'
+import { TitleBarSpacer } from './TitleBarSpacer'
 
 export const SIDEBAR_ID = 'app-sidebar'
 
@@ -23,7 +24,7 @@ interface Props<Id extends string> {
 export function Sidebar<Id extends string>({ items, current, onNavigate, brand, header }: Props<Id>) {
   return (
     <nav id={SIDEBAR_ID} className="flex w-52 shrink-0 flex-col bg-[var(--color-surface-sidebar)]">
-      <div data-tauri-drag-region className="h-11 shrink-0" />
+      <TitleBarSpacer />
 
       {brand && <div className="px-3 py-4">{brand}</div>}
 

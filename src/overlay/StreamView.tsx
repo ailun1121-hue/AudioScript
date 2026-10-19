@@ -9,7 +9,6 @@ const PARTIAL_OPACITY = 0.55
 
 interface Props {
   segments: TranscriptSegment[]
-  maxLines: number
   fontSize: number
   fontColor: string
   opacity: number
@@ -17,7 +16,7 @@ interface Props {
   glow: boolean
 }
 
-export function StreamView({ segments, maxLines, fontSize, fontColor, opacity, bgColor, glow }: Props) {
+export function StreamView({ segments, fontSize, fontColor, opacity, bgColor, glow }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const tail = segments.at(-1)
@@ -32,25 +31,15 @@ export function StreamView({ segments, maxLines, fontSize, fontColor, opacity, b
   const bg = hexToRgba(bgColor, opacity / 100)
 
   return (
-    <div className="relative w-full">
-      {glow && (
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0">
-          <div className="absolute inset-0 blur-[9px]">
-            <div className="absolute inset-0 rounded-[var(--radius-panel)]" style={glowRing(6)} />
-          </div>
-          <div className="absolute inset-0 rounded-[var(--radius-panel)]" style={glowRing(2)} />
-        </div>
-      )}
-
+    <div className="relative flex h-full w-full flex-col">
       <div
         ref={scrollRef}
-        className="relative w-full overflow-y-auto rounded-[var(--radius-panel)] px-4 py-2"
+        className="relative min-h-0 w-full flex-1 overflow-y-auto rounded-[var(--radius-panel)] px-4 py-2"
         style={{
           background: bg,
           fontSize: `${fontSize}px`,
           color: fontColor,
           lineHeight: 1.35,
-          maxHeight: `calc(${maxLines} * 1.35em + 1rem)`,
           scrollbarWidth: 'none',
         }}
       >
@@ -62,6 +51,21 @@ export function StreamView({ segments, maxLines, fontSize, fontColor, opacity, b
           segments.map((s) => <BilingualSegment key={s.id} seg={s} />)
         )}
       </div>
+
+      {glow && (
+        <>
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 rounded-[var(--radius-panel)] opacity-60 blur-[12px]"
+            style={glowRing(5)}
+          />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 rounded-[var(--radius-panel)] opacity-95"
+            style={glowRing(1.5)}
+          />
+        </>
+      )}
     </div>
   )
 }
@@ -69,12 +73,16 @@ export function StreamView({ segments, maxLines, fontSize, fontColor, opacity, b
 const GLOW_GRADIENT = 'linear-gradient(90deg, #b06ab3 0%, #4facfe 25%, #47cf73 50%, #ffc371 75%, #ff5f6d 100%)'
 
 function glowRing(padding: number): CSSProperties {
+  const maskImage = 'linear-gradient(#000 0 0), linear-gradient(#000 0 0)'
   return {
     background: GLOW_GRADIENT,
     padding,
-    maskImage: 'linear-gradient(#000 0 0), linear-gradient(#000 0 0)',
+    maskImage,
     maskClip: 'content-box, border-box',
     maskComposite: 'exclude',
+    WebkitMaskImage: maskImage,
+    WebkitMaskClip: 'content-box, border-box',
+    WebkitMaskComposite: 'xor',
   }
 }
 

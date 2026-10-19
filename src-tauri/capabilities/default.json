@@ -7,7 +7,11 @@
     "core:default",
     {
       "identifier": "core:event:allow-listen",
-      "allow": [{ "event": "transcript://*" }, { "event": "overlay://*" }]
+      "allow": [
+        { "event": "transcript://*" },
+        { "event": "overlay://*" },
+        { "event": "models://*" }
+      ]
     },
     "core:window:allow-start-dragging",
     "core:window:allow-start-resize-dragging"

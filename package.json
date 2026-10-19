@@ -19,13 +19,17 @@
     "icons": "node scripts/make-icons.mjs",
     "clean:dmg": "bash scripts/clean-dmg.sh",
     "fetch:model": "node scripts/fetch-model.mjs",
+    "fetch:model:high": "node scripts/fetch-model.mjs --model high --print-catalog",
     "fetch:mt": "node scripts/fetch-mt-model.mjs",
+    "fetch:mt:big": "node scripts/fetch-mt-model.mjs --tier big --print-catalog",
+    "verify:models": "node scripts/verify-model-catalog.mjs",
     "prepare": "node scripts/fetch-model.mjs",
     "tauri": "tauri"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2.8.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

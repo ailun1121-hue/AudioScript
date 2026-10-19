@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -8,8 +9,10 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::asr::{AsrEngine, TARGET_SAMPLE_RATE};
 use crate::audio::{self, CaptureHandle, SILENCE_RMS};
 use crate::config::{
-    target_lang_for, AsrConfig, EngineType, SessionConfig, TranslateConfig, TranslateEngine,
+    target_lang_for, AsrConfig, EngineType, MtModelTier, SessionConfig, TranslateConfig,
+    TranslateEngine,
 };
+use crate::models::catalog;
 use crate::paths;
 use crate::transcript::{TranscriptSegment, TranscriptStore, TranslationState};
 use crate::translate::queue::{Job, JobQueue};
@@ -20,11 +23,31 @@ const TRANSLATE_QUEUE_CAPACITY: usize = 32;
 fn build_translator(
     app: &AppHandle,
     cfg: &TranslateConfig,
+    mt_tier: MtModelTier,
 ) -> Result<Arc<Mutex<Box<dyn Translator>>>, String> {
     let mut engine: Box<dyn Translator> = match cfg.engine {
         TranslateEngine::LocalNmt => {
-            let root = paths::resolve_mt_model_root(app)?;
-            Box::new(crate::translate::local_nmt::LocalNmt::new(root))
+            let roots = paths::search_roots(app);
+            let resolved = paths::locate_mt_root(&roots, mt_tier)?;
+            tracing::info!(
+                tier = mt_tier.as_str(),
+                via = resolved.via.as_str(),
+                path = %resolved.path.display(),
+                "翻译模型目录"
+            );
+            let missing = paths::missing_mt_files(&resolved.path, catalog::mt_entry(mt_tier))?;
+            if !missing.is_empty() {
+                return Err(format!(
+                    "所选翻译模型「{}」未安装或文件不完整：{}\n缺少：{}\n→ 打开「模型」页下载，或切换回基础模型",
+                    catalog::mt_entry(mt_tier).title,
+                    resolved.path.display(),
+                    missing.join(", ")
+                ));
+            }
+            Box::new(crate::translate::local_nmt::LocalNmt::new(
+                resolved.path,
+                mt_tier,
+            ))
         }
         TranslateEngine::Mock => {
             let fail_every = std::env::var(crate::translate::mock::ENV_FAIL_EVERY)
@@ -96,6 +119,47 @@ struct RunningSession {
     queue: Arc<JobQueue>,
     translator: Arc<Mutex<Box<dyn Translator>>>,
     translate_worker: Option<std::thread::JoinHandle<()>>,
+    events: Sender<UiEvent>,
+}
+
+enum UiEvent {
+    Status(TaskStatus),
+    Level(f64),
+    Audio(AudioStatus),
+    Segments(Vec<TranscriptSegment>),
+}
+
+fn spawn_emitter(app: &AppHandle) -> Sender<UiEvent> {
+    let (tx, rx) = std::sync::mpsc::channel::<UiEvent>();
+    let app = app.clone();
+
+    let spawned = std::thread::Builder::new()
+        .name("session-events".into())
+        .spawn(move || {
+            while let Ok(event) = rx.recv() {
+                match event {
+                    UiEvent::Status(status) => emit_status(&app, status),
+                    UiEvent::Segments(segments) => emit_segments(&app, segments),
+                    UiEvent::Level(level) => {
+                        if let Err(e) = app.emit(EVENT_LEVEL, level) {
+                            tracing::debug!("广播电平失败（可能没有窗口）：{e}");
+                        }
+                    }
+                    UiEvent::Audio(status) => {
+                        if let Err(e) = app.emit(EVENT_AUDIO, status) {
+                            tracing::debug!("广播音频状态失败（可能没有窗口）：{e}");
+                        }
+                    }
+                }
+            }
+            tracing::debug!("事件线程退出");
+        });
+
+    if let Err(e) = spawned {
+        tracing::error!("启动事件线程失败，本会话将没有实时 UI 更新：{e}");
+    }
+
+    tx
 }
 
 #[typeshare::typeshare]
@@ -226,16 +290,54 @@ pub fn start(
         ));
     }
 
-    let resolved = paths::resolve_model_dir(app)?;
-    tracing::info!(
-        via = resolved.via.as_str(),
-        path = %resolved.path.display(),
-        "会话使用模型"
-    );
+    let prefs = crate::prefs::load(app);
+    let asr_entry = catalog::asr_entry(prefs.asr_model_tier);
+
+    let asr_dir = if let Some(custom) = cfg
+        .asr
+        .model_dir
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        let dir = dunce::simplified(std::path::Path::new(custom)).to_path_buf();
+        if !dir.is_dir() {
+            return Err(format!("自定义 ASR 模型目录不存在：{}", dir.display()));
+        }
+        let missing = paths::missing_asr_files(&dir, asr_entry)?;
+        if !missing.is_empty() {
+            return Err(format!(
+                "自定义 ASR 模型目录不完整：{}\n缺少：{}",
+                dir.display(),
+                missing.join(", ")
+            ));
+        }
+        tracing::info!(path = %dir.display(), "使用自定义 ASR 模型目录");
+        dir
+    } else {
+        let roots = paths::search_roots(app);
+        let resolved = paths::locate_asr(&roots, prefs.asr_model_tier)?;
+        tracing::info!(
+            tier = prefs.asr_model_tier.as_str(),
+            via = resolved.via.as_str(),
+            path = %resolved.path.display(),
+            "会话使用 ASR 模型"
+        );
+        let missing = paths::missing_asr_files(&resolved.path, asr_entry)?;
+        if !missing.is_empty() {
+            return Err(format!(
+                "所选语音识别模型「{}」未安装或文件不完整：{}\n缺少：{}\n→ 打开「模型」页下载，或切换回内置模型",
+                asr_entry.title,
+                resolved.path.display(),
+                missing.join(", ")
+            ));
+        }
+        resolved.path
+    };
 
     let mut engine = crate::asr::streaming::StreamingAdapter::new();
     let engine_cfg = AsrConfig {
-        model_dir: Some(resolved.path.to_string_lossy().into_owned()),
+        model_dir: Some(asr_dir.to_string_lossy().into_owned()),
         ..cfg.asr.clone()
     };
     engine
@@ -249,7 +351,7 @@ pub fn start(
 
     let engine: Arc<Mutex<Box<dyn AsrEngine>>> = Arc::new(Mutex::new(Box::new(engine)));
 
-    let translator = build_translator(app, &cfg.translate)?;
+    let translator = build_translator(app, &cfg.translate, prefs.mt_model_tier)?;
     let caps = translator
         .lock()
         .expect("translator mutex poisoned")
@@ -263,52 +365,13 @@ pub fn start(
 
     let queue = Arc::new(JobQueue::new(TRANSLATE_QUEUE_CAPACITY));
 
-    let translate_worker = {
-        let queue = Arc::clone(&queue);
-        let translator = Arc::clone(&translator);
-        let store = Arc::clone(&state.store);
-        let app_for_worker = app.clone();
-
-        std::thread::Builder::new()
-            .name("translate-worker".into())
-            .spawn(move || {
-                while let Some(job) = queue.pop_blocking() {
-                    let result = translator
-                        .lock()
-                        .expect("translator mutex poisoned")
-                        .translate(&job.text)
-                        .map_err(|e| e.to_string());
-
-                    let updated = {
-                        let mut s = store.lock().expect("transcript store mutex poisoned");
-                        s.set_translation(&job.segment_id, result).ok()
-                    };
-
-                    if let Some(seg) = updated {
-                        match seg.translation_state {
-                            TranslationState::Done => {
-                                tracing::info!(
-                                    "[译文] {}",
-                                    seg.translation.as_deref().unwrap_or("")
-                                )
-                            }
-                            TranslationState::Failed => {
-                                tracing::warn!(id = %seg.id, "[译文] 失败，该段只显示原文")
-                            }
-                            _ => {}
-                        }
-                        emit_segments(&app_for_worker, vec![seg]);
-                    }
-                }
-                tracing::info!("翻译工作线程退出");
-            })
-            .map_err(|e| format!("启动翻译线程失败：{e}"))?
-    };
+    let events = spawn_emitter(app);
 
     let store = Arc::clone(&state.store);
     let engine_for_sink = Arc::clone(&engine);
     let app_for_sink = app.clone();
     let queue_for_sink = Arc::clone(&queue);
+    let events_for_sink = events.clone();
 
     let mut last_emit = Instant::now()
         .checked_sub(EMIT_INTERVAL)
@@ -348,11 +411,9 @@ pub fn start(
             } else {
                 0.0
             };
-            if let Err(e) = app_for_sink.emit(EVENT_LEVEL, level) {
-                if !level_emit_failed {
-                    level_emit_failed = true;
-                    tracing::error!("广播电平失败（后续同类失败不再记录）：{e}");
-                }
+            if events_for_sink.send(UiEvent::Level(level)).is_err() && !level_emit_failed {
+                level_emit_failed = true;
+                tracing::error!("事件线程已退出，后续电平不再广播");
             }
             last_level = Instant::now();
             level_sq = 0.0;
@@ -408,16 +469,11 @@ pub fn start(
 
             if was_silent != Some(silent) {
                 was_silent = Some(silent);
-                if let Err(e) = app_for_sink.emit(
-                    EVENT_AUDIO,
-                    AudioStatus {
-                        silent,
-                        rms,
-                        segments: count as u32,
-                    },
-                ) {
-                    tracing::debug!("广播音频状态失败（可能没有窗口）：{e}");
-                }
+                let _ = events_for_sink.send(UiEvent::Audio(AudioStatus {
+                    silent,
+                    rms,
+                    segments: count as u32,
+                }));
             }
 
             last_beat = Instant::now();
@@ -497,11 +553,53 @@ pub fn start(
 
         if last_emit.elapsed() >= EMIT_INTERVAL && !pending.is_empty() {
             let batch = coalesce(std::mem::take(&mut pending));
-            emit_segments(&app_for_sink, batch);
+            let _ = events_for_sink.send(UiEvent::Segments(batch));
             last_emit = Instant::now();
         }
     })
     .map_err(|e| format!("启动采集失败：{e}"))?;
+
+    let translate_worker = {
+        let queue = Arc::clone(&queue);
+        let translator = Arc::clone(&translator);
+        let store = Arc::clone(&state.store);
+        let events_for_worker = events.clone();
+
+        std::thread::Builder::new()
+            .name("translate-worker".into())
+            .spawn(move || {
+                while let Some(job) = queue.pop_blocking() {
+                    let result = translator
+                        .lock()
+                        .expect("translator mutex poisoned")
+                        .translate(&job.text)
+                        .map_err(|e| e.to_string());
+
+                    let updated = {
+                        let mut s = store.lock().expect("transcript store mutex poisoned");
+                        s.set_translation(&job.segment_id, result).ok()
+                    };
+
+                    if let Some(seg) = updated {
+                        match seg.translation_state {
+                            TranslationState::Done => {
+                                tracing::info!(
+                                    "[译文] {}",
+                                    seg.translation.as_deref().unwrap_or("")
+                                )
+                            }
+                            TranslationState::Failed => {
+                                tracing::warn!(id = %seg.id, "[译文] 失败，该段只显示原文")
+                            }
+                            _ => {}
+                        }
+                        let _ = events_for_worker.send(UiEvent::Segments(vec![seg]));
+                    }
+                }
+                tracing::info!("翻译工作线程退出");
+            })
+            .map_err(|e| format!("启动翻译线程失败：{e}"))?
+    };
 
     let device_name = capture.device_name().to_string();
     let device_sample_rate = capture.device_sample_rate();
@@ -514,6 +612,8 @@ pub fn start(
         "转写会话已开始"
     );
 
+    let _ = events.send(UiEvent::Status(TaskStatus::Capturing));
+
     *state
         .running
         .lock()
@@ -525,14 +625,15 @@ pub fn start(
         queue,
         translator,
         translate_worker: Some(translate_worker),
+        events,
     });
     state.set_status(TaskStatus::Capturing);
-    emit_status(app, TaskStatus::Capturing);
 
     Ok(())
 }
 
 pub fn stop(app: &AppHandle) -> Result<(), String> {
+    tracing::info!("停止：收到命令");
     let state = app.state::<SessionState>();
 
     let Some(session) = state
@@ -542,15 +643,15 @@ pub fn stop(app: &AppHandle) -> Result<(), String> {
         .take()
     else {
         state.set_status(TaskStatus::Ready);
+        tracing::info!("停止：没有运行中的会话，直接返回");
         return Ok(());
     };
+    tracing::info!("停止：已摘除运行会话");
 
     state.set_status(TaskStatus::Ready);
-    emit_status(app, TaskStatus::Ready);
-    tracing::info!("转写会话已停止，收尾转入后台");
+    let _ = session.events.send(UiEvent::Status(TaskStatus::Ready));
+    tracing::info!("停止：状态已就绪，收尾转入后台");
 
-    // 收尾要 join 音频线程和翻译线程、释放两套原生模型，其中任何一步都可能在
-    // Windows 设备层卡住；放进后台线程，命令线程和 UI 不再被拖住。
     let pending = Arc::new(Mutex::new(Some(session)));
     let app_for_teardown = app.clone();
     let pending_for_teardown = Arc::clone(&pending);
@@ -585,6 +686,7 @@ fn teardown(app: &AppHandle, session: RunningSession) {
         queue,
         translator,
         translate_worker,
+        events,
         ..
     } = session;
     let t0 = Instant::now();
@@ -600,21 +702,27 @@ fn teardown(app: &AppHandle, session: RunningSession) {
         eng.shutdown();
         flushed
     };
-    match tail {
+    let changed = match tail {
         Ok(tail) if !tail.is_empty() => {
             let state = app.state::<SessionState>();
-            let changed = {
+            let applied = {
                 let mut s = state.store.lock().expect("transcript store mutex poisoned");
                 s.apply(tail)
             };
-            match changed {
-                Ok(changed) => emit_segments(app, changed),
-                Err(e) => tracing::error!("收尾段落被状态机拒绝：{e}"),
+            match applied {
+                Ok(changed) => changed,
+                Err(e) => {
+                    tracing::error!("收尾段落被状态机拒绝：{e}");
+                    Vec::new()
+                }
             }
         }
-        Ok(_) => {}
-        Err(e) => tracing::error!("冲刷引擎失败：{e}"),
-    }
+        Ok(_) => Vec::new(),
+        Err(e) => {
+            tracing::error!("冲刷引擎失败：{e}");
+            Vec::new()
+        }
+    };
     tracing::info!(ms = t0.elapsed().as_millis(), "收尾：引擎已关闭");
 
     let dropped = queue.clear();
@@ -637,6 +745,10 @@ fn teardown(app: &AppHandle, session: RunningSession) {
         .expect("translator mutex poisoned")
         .shutdown();
     tracing::info!(ms = t0.elapsed().as_millis(), "收尾完成");
+
+    if !changed.is_empty() {
+        let _ = events.send(UiEvent::Segments(changed));
+    }
 }
 
 pub fn clear(app: &AppHandle) {

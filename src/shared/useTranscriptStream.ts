@@ -16,7 +16,7 @@ export function useTranscriptStream(): {
 
     on<TranscriptSegment[]>(EVENT.segments, (delta) => {
       gotBroadcast = true
-      if (!disposed) setSegments((prev) => mergeDelta(prev, delta))
+      if (!disposed) setSegments((prev) => (delta.length === 0 ? [] : mergeDelta(prev, delta)))
     })
       .then((fn) => {
         if (disposed) fn()

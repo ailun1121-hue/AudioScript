@@ -62,9 +62,6 @@ function readJsonVersion(rel) {
   return JSON.parse(read(rel)).version
 }
 
-// 只替换顶层的 version 行，不做 JSON.parse + 重新序列化——
-// 那会把 `"trafficLightPosition": { "x": 18, "y": 18 }` 这类单行对象拆成多行，
-// 在「发布」这个提交里混进一堆与版本号无关的格式改动。
 const TOP_LEVEL_VERSION = /^(  "version": ")[^"]*(")/m
 
 function bumpJsonVersion(rel, version) {

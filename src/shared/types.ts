@@ -65,6 +65,66 @@ export interface MicRequestResult {
 	timedOut: boolean;
 }
 
+export enum ModelPhase {
+	Downloading = "downloading",
+	Verifying = "verifying",
+	Extracting = "extracting",
+	Validating = "validating",
+	Done = "done",
+	Cancelled = "cancelled",
+	Failed = "failed",
+}
+
+export interface ModelJobStatus {
+	jobId: string;
+	modelId: string;
+	phase: ModelPhase;
+	downloadedBytes: number;
+	totalBytes?: number;
+	percent?: number;
+	error?: string;
+}
+
+export interface ModelLicenseDto {
+	component: string;
+	license: string;
+	licenseUrl?: string;
+	requiresAttribution: boolean;
+	attribution?: string;
+}
+
+export enum ModelKind {
+	Asr = "asr",
+	Mt = "mt",
+}
+
+export interface ModelStatus {
+	id: string;
+	kind: ModelKind;
+	tier: string;
+	title: string;
+	description: string;
+	bundled: boolean;
+	downloadable: boolean;
+	installed: boolean;
+	complete: boolean;
+	selected: boolean;
+	path?: string;
+	via?: string;
+	installedBytes: number;
+	downloadBytes: number;
+	licenses: ModelLicenseDto[];
+	sourceUrl?: string;
+	missing: string[];
+}
+
+export interface ModelsList {
+	asr: ModelStatus[];
+	mt: ModelStatus[];
+	job?: ModelJobStatus;
+	userRoot?: string;
+}
+
 export enum OverlayMode {
 	Locked = "locked",
 	Edit = "edit",
@@ -115,6 +175,16 @@ export interface WindowGeometry {
 	size: WindowSize;
 }
 
+export enum AsrModelTier {
+	Builtin = "builtin",
+	HighAccuracy = "high-accuracy",
+}
+
+export enum MtModelTier {
+	Base = "base",
+	Big = "big",
+}
+
 export interface Preferences {
 	audioSource: string;
 	deviceId?: string;
@@ -127,6 +197,8 @@ export interface Preferences {
 	endpoint: EndpointConfig;
 	overlayGeometry?: WindowGeometry;
 	onboardingDone: boolean;
+	asrModelTier: AsrModelTier;
+	mtModelTier: MtModelTier;
 }
 
 export interface PrefsPatch {
@@ -138,6 +210,8 @@ export interface PrefsPatch {
 	theme?: Theme;
 	sidebarVisible?: boolean;
 	onboardingDone?: boolean;
+	asrModelTier?: AsrModelTier;
+	mtModelTier?: MtModelTier;
 }
 
 export interface TranslateConfig {

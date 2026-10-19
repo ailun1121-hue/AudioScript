@@ -1,3 +1,4 @@
+import { save } from '@tauri-apps/plugin-dialog'
 import { useStore } from '@/main/store'
 import { formatCmdError, revealPath, transcriptExport } from '@/shared/ipc'
 import { useTranscriptStream } from '@/shared/useTranscriptStream'
@@ -23,8 +24,14 @@ export function TranscribePage() {
 
   async function handleExport() {
     try {
-      const { path } = await transcriptExport(exportStamp())
-      await revealPath(path)
+      const stamp = exportStamp()
+      const path = await save({
+        defaultPath: `AudioScript-转写-${stamp.replace(/:/g, '-')}.md`,
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      })
+      if (!path) return
+      const { path: saved } = await transcriptExport(stamp, path)
+      await revealPath(saved)
     } catch (e) {
       setError(formatCmdError(e))
     }

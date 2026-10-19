@@ -9,6 +9,7 @@ import {
   CpuChipIcon,
   ExclamationTriangleIcon,
   FolderOpenIcon,
+  HeartIcon,
   InformationCircleIcon,
   LanguageIcon,
   MicrophoneIcon,
@@ -45,6 +46,7 @@ export type IconName =
   | 'sparkle'
   | 'shield'
   | 'github'
+  | 'heart'
   | 'sidebar'
   | 'download'
   | 'chevron'
@@ -117,6 +119,7 @@ const ICONS: Record<IconName, IconComponent> = {
   sparkle: SparklesIcon,
   shield: ShieldCheckIcon,
   github: GitHubGlyph,
+  heart: HeartIcon,
   sidebar: SidebarGlyph,
   download: ArrowDownTrayIcon,
   chevron: ChevronRightIcon,

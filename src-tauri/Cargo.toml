@@ -65,6 +65,14 @@ typeshare = "1"
 uuid = { version = "1", features = ["v4"] }
 flexaudio = "0.5.4"
 tauri-plugin-autostart = "2.7.0"
+tauri-plugin-dialog = "2"
+
+# 可选模型下载：阻塞式 HTTPS + 流式解压 + 校验（都已存在于 Cargo.lock）。
+ureq = { version = "2.12", default-features = false, features = ["tls", "gzip", "proxy-from-env"] }
+tar = "0.4"
+flate2 = "1"
+bzip2 = "0.5"
+sha2 = "0.10"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Apple Silicon 的推荐组合就是 accelerate + ruy。
@@ -99,4 +107,13 @@ block2 = "0.6"
 ct2rs = { version = "0.10", default-features = false, features = [
     "tokenizers",
     "mkl",
+] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
 ] }

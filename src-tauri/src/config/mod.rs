@@ -264,6 +264,58 @@ pub const MAX_OVERLAY_HEIGHT: u32 = 2160;
 
 #[typeshare]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum AsrModelTier {
+    #[default]
+    Builtin,
+    HighAccuracy,
+}
+
+impl AsrModelTier {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Builtin => "builtin",
+            Self::HighAccuracy => "high-accuracy",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "builtin" => Some(Self::Builtin),
+            "high-accuracy" => Some(Self::HighAccuracy),
+            _ => None,
+        }
+    }
+}
+
+#[typeshare]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum MtModelTier {
+    #[default]
+    Base,
+    Big,
+}
+
+impl MtModelTier {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Base => "base",
+            Self::Big => "big",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "base" => Some(Self::Base),
+            "big" => Some(Self::Big),
+            _ => None,
+        }
+    }
+}
+
+#[typeshare]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum Theme {
     #[default]
@@ -358,6 +410,8 @@ pub struct Preferences {
     pub endpoint: EndpointConfig,
     pub overlay_geometry: Option<WindowGeometry>,
     pub onboarding_done: bool,
+    pub asr_model_tier: AsrModelTier,
+    pub mt_model_tier: MtModelTier,
 }
 
 impl Default for Preferences {
@@ -374,6 +428,8 @@ impl Default for Preferences {
             shortcuts: std::collections::HashMap::new(),
             overlay_geometry: None,
             onboarding_done: false,
+            asr_model_tier: AsrModelTier::default(),
+            mt_model_tier: MtModelTier::default(),
         }
     }
 }
@@ -390,6 +446,8 @@ pub struct PrefsPatch {
     pub theme: Option<Theme>,
     pub sidebar_visible: Option<bool>,
     pub onboarding_done: Option<bool>,
+    pub asr_model_tier: Option<AsrModelTier>,
+    pub mt_model_tier: Option<MtModelTier>,
 }
 
 impl PrefsPatch {
@@ -431,6 +489,12 @@ impl PrefsPatch {
         }
         if let Some(v) = self.onboarding_done {
             p.onboarding_done = v;
+        }
+        if let Some(v) = self.asr_model_tier {
+            p.asr_model_tier = v;
+        }
+        if let Some(v) = self.mt_model_tier {
+            p.mt_model_tier = v;
         }
     }
 }

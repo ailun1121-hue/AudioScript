@@ -4,6 +4,7 @@ import { Alert } from '@/ui/Alert'
 import { Button } from '@/ui/Button'
 import { PrimaryAction } from '@/ui/PrimaryAction'
 import { Sidebar } from '@/ui/Sidebar'
+import { TitleBarSpacer } from '@/ui/TitleBarSpacer'
 import { Brand } from './Brand'
 import { NAV, navItem, type PageId } from './navigation'
 import { AboutPage } from './pages/AboutPage'
@@ -36,7 +37,7 @@ function BootSplash() {
   return (
     <main className="flex h-full">
       <section className="flex min-w-0 flex-1 flex-col bg-[var(--color-surface-0)]">
-        <div data-tauri-drag-region className="h-11 shrink-0" />
+        <TitleBarSpacer />
       </section>
     </main>
   )
@@ -51,7 +52,7 @@ function Shell() {
       <Sidebar items={NAV} current={page} onNavigate={setPage} brand={<Brand />} header={<PrimaryActionSlot />} />
 
       <section className="flex min-w-0 flex-1 flex-col bg-[var(--color-surface-0)]">
-        <div data-tauri-drag-region className="h-11 shrink-0" />
+        <TitleBarSpacer />
 
         <Alerts onOpenPermissions={() => setPage('permissions')} />
 

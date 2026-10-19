@@ -4,6 +4,7 @@ pub mod commands;
 pub mod config;
 pub mod lifecycle;
 pub mod log;
+pub mod models;
 pub mod overlay;
 pub mod paths;
 pub mod permission;
@@ -32,6 +33,7 @@ pub fn run() {
 
     builder
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -39,6 +41,7 @@ pub fn run() {
         .manage(lifecycle::LifecycleState::default())
         .manage(overlay::OverlayState::default())
         .manage(shortcut::HotkeyState::default())
+        .manage(models::state::ModelState::default())
         .manage(session::SessionState::default())
         .invoke_handler(tauri::generate_handler![commands::dispatch])
         .on_window_event(lifecycle::on_window_event)
@@ -57,6 +60,14 @@ pub fn run() {
             handle.manage(log::LogDir(log::init(&handle)));
 
             paths::log_startup_selfcheck(&handle);
+
+            let cleanup_handle = handle.clone();
+            if let Err(e) = std::thread::Builder::new()
+                .name("models-cleanup".into())
+                .spawn(move || models::install::cleanup_stale(&cleanup_handle))
+            {
+                tracing::warn!("无法启动模型临时目录清理线程：{e}");
+            }
 
             let saved_prefs = prefs::load(&handle);
             if let Err(e) = overlay::init(&handle, saved_prefs.overlay, saved_prefs.overlay_geometry) {
@@ -123,7 +134,7 @@ pub fn run() {
                     ),
                     ("prefs_get", serde_json::json!({})),
                     ("config_defaults", serde_json::json!({})),
-                    ("model_info", serde_json::json!({})),
+                    ("models_list", serde_json::json!({})),
                     (
                         "prefs_set",
                         serde_json::json!({ "patch": { "theme": "dark" } }),

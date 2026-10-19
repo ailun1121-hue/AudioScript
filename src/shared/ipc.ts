@@ -5,6 +5,10 @@ import type {
   EndpointConfig,
   InputDevice,
   MicRequestResult,
+  ModelJobStatus,
+  ModelLicenseDto,
+  ModelStatus,
+  ModelsList,
   OverlayConfig,
   PermissionSnapshot,
   Preferences,
@@ -14,13 +18,26 @@ import type {
   TaskStatus,
   TranscriptSegment,
 } from './types'
-import { AudioSourceKind, MicPermission, OverlayMode, SystemAudioVerdict, Theme, TranslateEngine } from './types'
+import {
+  AudioSourceKind,
+  MicPermission,
+  ModelKind,
+  ModelPhase,
+  OverlayMode,
+  SystemAudioVerdict,
+  Theme,
+  TranslateEngine,
+} from './types'
 
 export type {
   AudioStatus,
   EndpointConfig,
   InputDevice,
   MicRequestResult,
+  ModelJobStatus,
+  ModelLicenseDto,
+  ModelStatus,
+  ModelsList,
   OverlayConfig,
   PermissionSnapshot,
   Preferences,
@@ -30,7 +47,16 @@ export type {
   TaskStatus,
   TranscriptSegment,
 }
-export { AudioSourceKind, MicPermission, OverlayMode, SystemAudioVerdict, Theme, TranslateEngine }
+export {
+  AudioSourceKind,
+  MicPermission,
+  ModelKind,
+  ModelPhase,
+  OverlayMode,
+  SystemAudioVerdict,
+  Theme,
+  TranslateEngine,
+}
 
 export async function call<T = unknown>(name: string, args: Record<string, unknown> = {}): Promise<T> {
   return invoke<T>('dispatch', { name, args })
@@ -43,6 +69,7 @@ export const EVENT = {
   overlayVisibility: 'overlay://visibility',
   audio: 'transcript://audio',
   level: 'transcript://level',
+  modelsProgress: 'models://progress',
 } as const
 
 export function on<T>(event: string, handler: (payload: T) => void): Promise<UnlistenFn> {
@@ -65,22 +92,6 @@ export interface ConfigDefaults {
   overlay: OverlayConfig
   endpoint: EndpointConfig
   endpointProfiles: Record<'interpretation' | 'dictation', EndpointConfig>
-}
-
-export interface ModelEntry {
-  name: string
-  path: string
-  installed: boolean
-  complete?: boolean
-  via?: string
-  license: string
-  source?: string
-  requiresAttribution?: boolean
-}
-
-export interface ModelInfo {
-  asr: ModelEntry | null
-  translate: ModelEntry[] | null
 }
 
 export function appInfo(): Promise<AppInfo> {
@@ -120,8 +131,28 @@ export function configDefaults(): Promise<ConfigDefaults> {
   return call<ConfigDefaults>('config_defaults')
 }
 
-export function modelInfo(): Promise<ModelInfo> {
-  return call<ModelInfo>('model_info')
+export function modelsList(): Promise<ModelsList> {
+  return call<ModelsList>('models_list')
+}
+
+export function modelDownload(modelId: string): Promise<{ jobId: string }> {
+  return call<{ jobId: string }>('model_download', { modelId })
+}
+
+export function modelOpenDir(): Promise<null> {
+  return call<null>('model_open_dir')
+}
+
+export function modelCancel(jobId: string): Promise<{ cancelled: boolean }> {
+  return call<{ cancelled: boolean }>('model_cancel', { jobId })
+}
+
+export function modelRemove(modelId: string): Promise<ModelsList> {
+  return call<ModelsList>('model_remove', { modelId })
+}
+
+export function modelSelect(modelId: string): Promise<ModelsList> {
+  return call<ModelsList>('model_select', { modelId })
 }
 
 export function autostartGet(): Promise<AutostartState> {
@@ -190,6 +221,14 @@ export function openRepo(): Promise<null> {
   return call<null>('open_repo')
 }
 
+export function openSponsor(): Promise<null> {
+  return call<null>('open_sponsor')
+}
+
+export function openUrl(url: string): Promise<null> {
+  return call<null>('open_url', { url })
+}
+
 export function revealPath(path?: string): Promise<null> {
   return call<null>('reveal_path', path ? { path } : {})
 }
@@ -198,8 +237,8 @@ export function logsExport(): Promise<{ path: string }> {
   return call<{ path: string }>('logs_export')
 }
 
-export function transcriptExport(stamp: string): Promise<{ path: string }> {
-  return call<{ path: string }>('transcript_export', { stamp })
+export function transcriptExport(stamp: string, path: string): Promise<{ path: string }> {
+  return call<{ path: string }>('transcript_export', { stamp, path })
 }
 
 export function overlayToggle(): Promise<boolean> {

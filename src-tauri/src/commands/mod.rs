@@ -7,7 +7,7 @@ use crate::config::{
     target_lang_for, EndpointConfig, EndpointProfile, OverlayConfig, OverlayMode, Preferences,
     PrefsPatch, SessionConfig, TranslateEngine,
 };
-use crate::{audio, overlay, paths, permission, prefs, session, shortcut};
+use crate::{audio, overlay, permission, prefs, session, shortcut};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CmdError {
@@ -62,6 +62,8 @@ pub async fn route_async(app: &AppHandle, name: &str, args: &Value) -> Result<Va
             | "permission_probe_system_audio"
             | "session_start"
             | "session_stop"
+            | "models_list"
+            | "model_remove"
     ) {
         let (app, name, args) = (app.clone(), name.to_string(), args.clone());
         return tauri::async_runtime::spawn_blocking(move || route(&app, &name, &args))
@@ -148,6 +150,23 @@ pub fn route(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdErro
             Ok(json!(null))
         }
 
+        "open_sponsor" => {
+            open_with_system(std::ffi::OsStr::new(SPONSOR_URL), "浏览器")?;
+            Ok(json!(null))
+        }
+
+        "open_url" => {
+            let url = args
+                .get("url")
+                .and_then(Value::as_str)
+                .ok_or_else(|| CmdError::BadArgs("缺少 url".into()))?;
+            if !is_allowed_link(url) {
+                return Err(CmdError::BadArgs(format!("拒绝打开非项目链接：{url}")));
+            }
+            open_with_system(std::ffi::OsStr::new(url), "链接")?;
+            Ok(json!(null))
+        }
+
         "reveal_path" => {
             let target = args
                 .get("path")
@@ -169,7 +188,11 @@ pub fn route(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdErro
                 .get("stamp")
                 .and_then(Value::as_str)
                 .unwrap_or("export");
-            let path = export_transcript(app, stamp)?;
+            let path = args
+                .get("path")
+                .and_then(Value::as_str)
+                .ok_or_else(|| CmdError::BadArgs("缺少 path".into()))?;
+            let path = export_transcript(app, stamp, std::path::Path::new(path))?;
             Ok(json!({ "path": path.display().to_string() }))
         }
 
@@ -195,7 +218,49 @@ pub fn route(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdErro
             }))
         }
 
-        "model_info" => Ok(model_info(app)),
+        "models_list" => Ok(json!(crate::models::status::inspect(app))),
+
+        "model_open_dir" => {
+            let dir = crate::paths::ensure_user_models_root(app).map_err(CmdError::Failed)?;
+            open_with_system(dir.as_os_str(), "模型目录")?;
+            Ok(json!(null))
+        }
+
+        "model_download" => {
+            let id = args
+                .get("modelId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| CmdError::BadArgs("缺少 modelId".into()))?;
+            let job_id =
+                crate::models::install::start_download(app, id).map_err(model_cmd_error)?;
+            Ok(json!({ "jobId": job_id }))
+        }
+
+        "model_cancel" => {
+            let job_id = args
+                .get("jobId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| CmdError::BadArgs("缺少 jobId".into()))?;
+            Ok(json!({ "cancelled": crate::models::install::cancel(app, job_id) }))
+        }
+
+        "model_remove" => {
+            let id = args
+                .get("modelId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| CmdError::BadArgs("缺少 modelId".into()))?;
+            crate::models::install::remove_model(app, id).map_err(model_cmd_error)?;
+            Ok(json!(crate::models::status::inspect(app)))
+        }
+
+        "model_select" => {
+            let id = args
+                .get("modelId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| CmdError::BadArgs("缺少 modelId".into()))?;
+            select_model(app, id)?;
+            Ok(json!(crate::models::status::inspect(app)))
+        }
 
         "config_defaults" => Ok(json!({
             "overlay": OverlayConfig::default(),
@@ -357,6 +422,8 @@ fn app_info() -> Value {
 
 const REPO_URL: &str = "https://github.com/niyongsheng/AudioScript";
 
+const SPONSOR_URL: &str = "https://ifdian.net/a/nico2026";
+
 fn export_dir(app: &AppHandle) -> Result<std::path::PathBuf, CmdError> {
     app.path()
         .desktop_dir()
@@ -364,25 +431,11 @@ fn export_dir(app: &AppHandle) -> Result<std::path::PathBuf, CmdError> {
         .map_err(|e| CmdError::Failed(format!("找不到可写入的位置：{e}")))
 }
 
-fn safe_stamp(stamp: &str) -> String {
-    let s: String = stamp
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect();
-    if s.trim_matches('-').is_empty() {
-        "export".into()
-    } else {
-        s
-    }
-}
-
-fn export_transcript(app: &AppHandle, stamp: &str) -> Result<std::path::PathBuf, CmdError> {
+fn export_transcript(
+    app: &AppHandle,
+    stamp: &str,
+    dest: &std::path::Path,
+) -> Result<std::path::PathBuf, CmdError> {
     let segments = app.state::<session::SessionState>().snapshot();
     let p = prefs::load(app);
     let direction = match p.translate_engine {
@@ -394,13 +447,37 @@ fn export_transcript(app: &AppHandle, stamp: &str) -> Result<std::path::PathBuf,
         }),
     };
 
+    let mut file = dest.to_path_buf();
+    if file.extension().is_none() {
+        file.set_extension("md");
+    }
+
     let md = crate::transcript::to_markdown(&segments, stamp, direction);
-    let file = export_dir(app)?.join(format!("AudioScript-转写-{}.md", safe_stamp(stamp)));
     std::fs::write(&file, md)
         .map_err(|e| CmdError::Failed(format!("写入 {} 失败：{e}", file.display())))?;
 
     tracing::info!(path = %file.display(), "转写已导出");
     Ok(file)
+}
+
+fn is_allowed_link(url: &str) -> bool {
+    const PREFIXES: [&str; 6] = [
+        "https://github.com/niyongsheng/AudioScript",
+        "https://github.com/k2-fsa/sherpa-onnx",
+        "https://github.com/Helsinki-NLP/Opus-MT",
+        "https://huggingface.co/Helsinki-NLP/",
+        "https://www.apache.org/licenses/LICENSE-2.0",
+        "https://creativecommons.org/licenses/by/4.0/",
+    ];
+
+    PREFIXES.iter().any(|prefix| {
+        if prefix.ends_with('/') {
+            url.starts_with(prefix)
+        } else {
+            url.strip_prefix(prefix)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+        }
+    })
 }
 
 fn open_with_system(target: &std::ffi::OsStr, what: &str) -> Result<(), CmdError> {
@@ -418,6 +495,9 @@ fn open_with_system(target: &std::ffi::OsStr, what: &str) -> Result<(), CmdError
 }
 
 fn reveal_in_file_manager(path: &std::path::Path) -> Result<(), CmdError> {
+    if !path.exists() {
+        return Err(CmdError::Failed(format!("路径不存在：{}", path.display())));
+    }
     open_with_system(path.as_os_str(), "文件管理器")
 }
 
@@ -469,43 +549,57 @@ fn newest_log_stamp(dir: &std::path::Path) -> Option<String> {
     stamps.pop()
 }
 
-fn model_info(app: &AppHandle) -> Value {
-    use crate::translate::local_nmt::{MODEL_EN_ZH, MODEL_ZH_EN};
+fn model_cmd_error(e: crate::models::ModelError) -> CmdError {
+    use crate::models::ModelError as M;
+    match e {
+        M::UnknownModel(_)
+        | M::NotDownloadable(_)
+        | M::AlreadyInstalled(_)
+        | M::Bundled
+        | M::Selected
+        | M::InUse
+        | M::JobInProgress => CmdError::BadArgs(e.to_string()),
+        _ => CmdError::Failed(e.to_string()),
+    }
+}
 
-    let asr_root = paths::resolve_models_root(app).ok();
-    let mt_root = paths::resolve_mt_model_root(app).ok();
+fn select_model(app: &AppHandle, id: &str) -> Result<(), CmdError> {
+    use crate::config::{AsrModelTier, MtModelTier};
 
-    let asr = asr_root.as_ref().map(|root| {
-        let dir = root.path.join(crate::asr::DEFAULT_MODEL_DIR_NAME);
-        json!({
-            "name": crate::asr::DEFAULT_MODEL_DIR_NAME,
-            "path": dir.display().to_string(),
-            "installed": dir.is_dir(),
-            "complete": paths::model_dir_is_complete(&dir).is_ok(),
-            "via": root.via.as_str(),
-            "license": "Apache-2.0",
-            "source": "k2-fsa/sherpa-onnx",
-        })
-    });
+    let entry = crate::models::catalog::entry(id)
+        .ok_or_else(|| CmdError::BadArgs(format!("未知模型：{id}")))?;
 
-    let mt = mt_root.as_ref().map(|root| {
-        let one = |dir_name: &str, license: &str, attribution: bool| {
-            let d = root.join(dir_name);
-            json!({
-                "name": dir_name,
-                "path": d.display().to_string(),
-                "installed": d.is_dir(),
-                "license": license,
-                "requiresAttribution": attribution,
-            })
-        };
-        json!([
-            one(MODEL_EN_ZH, "Apache-2.0", false),
-            one(MODEL_ZH_EN, "CC-BY-4.0", true),
-        ])
-    });
+    let list = crate::models::status::inspect(app);
+    let status = list
+        .asr
+        .iter()
+        .chain(list.mt.iter())
+        .find(|m| m.id == id)
+        .ok_or_else(|| CmdError::BadArgs(format!("未知模型：{id}")))?;
+    if !status.complete {
+        return Err(CmdError::BadArgs(format!(
+            "模型「{}」尚未安装或文件不完整，请先下载",
+            entry.title
+        )));
+    }
 
-    json!({ "asr": asr, "translate": mt })
+    match entry.kind {
+        crate::models::ModelKind::Asr => {
+            let tier = AsrModelTier::parse(&entry.tier)
+                .ok_or_else(|| CmdError::BadArgs(format!("未知 ASR 档位：{}", entry.tier)))?;
+            crate::prefs::update(app, |p| p.asr_model_tier = tier)
+                .map_err(CmdError::Failed)?;
+        }
+        crate::models::ModelKind::Mt => {
+            let tier = MtModelTier::parse(&entry.tier)
+                .ok_or_else(|| CmdError::BadArgs(format!("未知 MT 档位：{}", entry.tier)))?;
+            crate::prefs::update(app, |p| p.mt_model_tier = tier)
+                .map_err(CmdError::Failed)?;
+        }
+    }
+
+    tracing::info!(model = %entry.id, "已切换模型（下次开始转写生效）");
+    Ok(())
 }
 
 fn exe_mtime_ms() -> Option<u64> {
@@ -571,5 +665,28 @@ mod tests {
         let src = tmp("nostamp");
         assert_eq!(newest_log_stamp(&src), None);
         std::fs::remove_dir_all(&src).ok();
+    }
+
+    #[test]
+    fn only_known_links_can_be_opened() {
+        assert!(is_allowed_link(
+            "https://github.com/niyongsheng/AudioScript/releases/tag/v0.1.5"
+        ));
+        assert!(is_allowed_link("https://github.com/niyongsheng/AudioScript"));
+        assert!(is_allowed_link(
+            "https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models"
+        ));
+        assert!(is_allowed_link(
+            "https://huggingface.co/Helsinki-NLP/opus-mt-tc-big-en-zh"
+        ));
+        assert!(is_allowed_link(
+            "https://creativecommons.org/licenses/by/4.0/"
+        ));
+        assert!(!is_allowed_link("https://github.com/niyongsheng/other"));
+        assert!(!is_allowed_link("https://github.com/niyongsheng/AudioScript-evil"));
+        assert!(!is_allowed_link("https://github.com/k2-fsa/sherpa-onnx-evil"));
+        assert!(!is_allowed_link("https://huggingface.co/other/model"));
+        assert!(!is_allowed_link("http://github.com/niyongsheng/AudioScript"));
+        assert!(!is_allowed_link("javascript:alert(1)"));
     }
 }

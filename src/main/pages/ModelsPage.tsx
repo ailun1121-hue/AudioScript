@@ -1,19 +1,138 @@
-import { useEffect, useState } from 'react'
-import { type ModelEntry, type ModelInfo, modelInfo } from '@/shared/ipc'
+import { useCallback, useEffect, useState } from 'react'
+import { useStore } from '@/main/store'
+import {
+  EVENT,
+  formatCmdError,
+  type ModelJobStatus,
+  ModelPhase,
+  type ModelStatus,
+  type ModelsList,
+  modelCancel,
+  modelDownload,
+  modelOpenDir,
+  modelRemove,
+  modelSelect,
+  modelsList,
+  on,
+} from '@/shared/ipc'
+import { Alert } from '@/ui/Alert'
+import { Button } from '@/ui/Button'
 import { Page } from '@/ui/Page'
+import { ProgressBar } from '@/ui/ProgressBar'
 import { SettingsGroup, SettingsRow } from '@/ui/Settings'
 import { StatusBadge } from '@/ui/StatusBadge'
 
+interface Failure {
+  modelId: string
+  message: string
+}
+
 export function ModelsPage() {
-  const [info, setInfo] = useState<ModelInfo | null>(null)
+  const { status, setError } = useStore()
+  const capturing = status === 'capturing'
+
+  const [list, setList] = useState<ModelsList | null>(null)
+  const [job, setJob] = useState<ModelJobStatus | null>(null)
+  const [failure, setFailure] = useState<Failure | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
+
+  const refresh = useCallback(async () => {
+    try {
+      const next = await modelsList()
+      setList(next)
+      setJob(next.job ?? null)
+    } catch (e) {
+      setError(formatCmdError(e))
+    }
+  }, [setError])
 
   useEffect(() => {
-    modelInfo()
-      .then(setInfo)
-      .catch(() => {})
-  }, [])
+    let disposed = false
+    void refresh()
 
-  if (!info) {
+    const unlisten = on<ModelJobStatus>(EVENT.modelsProgress, (payload) => {
+      if (disposed) return
+      const terminal =
+        payload.phase === ModelPhase.Done ||
+        payload.phase === ModelPhase.Failed ||
+        payload.phase === ModelPhase.Cancelled
+
+      if (!terminal) {
+        setJob(payload)
+        return
+      }
+
+      if (payload.phase === ModelPhase.Failed) {
+        setFailure({
+          modelId: payload.modelId,
+          message: payload.error ?? '下载失败',
+        })
+      }
+      setJob(null)
+      void refresh()
+    })
+
+    return () => {
+      disposed = true
+      void unlisten.then((fn) => fn())
+    }
+  }, [refresh])
+
+  async function download(modelId: string) {
+    setFailure(null)
+    setBusyId(modelId)
+    try {
+      await modelDownload(modelId)
+      await refresh()
+    } catch (e) {
+      setError(formatCmdError(e))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function cancel(jobId: string) {
+    try {
+      await modelCancel(jobId)
+    } catch (e) {
+      setError(formatCmdError(e))
+    }
+  }
+
+  async function select(modelId: string) {
+    setBusyId(modelId)
+    try {
+      setList(await modelSelect(modelId))
+      setConfirmRemove(null)
+    } catch (e) {
+      setError(formatCmdError(e))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function remove(modelId: string) {
+    if (confirmRemove !== modelId) {
+      setConfirmRemove(modelId)
+      return
+    }
+    setBusyId(modelId)
+    setConfirmRemove(null)
+    try {
+      setList(await modelRemove(modelId))
+    } catch (e) {
+      setError(formatCmdError(e))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  function openModelsDir() {
+    void modelOpenDir().catch((e) => setError(formatCmdError(e)))
+  }
+
+  if (!list) {
     return (
       <Page title="模型">
         <p className="text-[var(--color-ink-2)] text-sm">读取中…</p>
@@ -21,60 +140,210 @@ export function ModelsPage() {
     )
   }
 
+  const connected = list.userRoot !== undefined
+
   return (
     <Page title="模型">
-      <SettingsGroup title="语音识别" footer="随安装包分发，离线运行，音频与文本不出本机。">
-        {info.asr ? (
-          <SettingsRow
-            icon="waveform"
-            title={info.asr.name}
-            description={
-              <>
-                路径来源：<span className="font-mono">{info.asr.via}</span>
-              </>
-            }
-            control={
-              <StatusBadge tone={info.asr.complete ? 'ok' : 'danger'}>
-                {info.asr.complete ? '已就绪' : '文件不完整'}
-              </StatusBadge>
-            }
-          />
-        ) : (
-          <SettingsRow icon="alert" title="找不到模型" description="模型目录解析失败，详见日志。" />
-        )}
-      </SettingsGroup>
+      {capturing && (
+        <Alert tone="info" title="正在转写">
+          模型切换将在下次开始转写时生效；停止转写后才能删除模型。
+        </Alert>
+      )}
 
-      <SettingsGroup title="翻译" footer="两个方向各一个模型，可只安装其一。">
-        {(info.translate ?? []).map((m) => (
-          <SettingsRow
-            key={m.name}
-            icon="translate"
-            title={m.name}
-            description={<LicenseTag entry={m} />}
-            control={<StatusBadge tone={m.installed ? 'ok' : 'warn'}>{m.installed ? '已安装' : '未安装'}</StatusBadge>}
+      {failure && (
+        <Alert tone="error" title={`${modelTitle(list, failure.modelId)} 下载失败`}>
+          {failure.message}
+          <button type="button" className="ml-2 underline underline-offset-2" onClick={() => setFailure(null)}>
+            知道了
+          </button>
+        </Alert>
+      )}
+
+      <SettingsGroup title="语音识别">
+        {list.asr.map((m) => (
+          <ModelRow
+            key={m.id}
+            model={m}
+            job={job}
+            capturing={capturing}
+            busy={busyId === m.id}
+            anyJob={job !== null}
+            confirmRemove={confirmRemove === m.id}
+            onDownload={() => void download(m.id)}
+            onCancel={() => job && void cancel(job.jobId)}
+            onSelect={() => void select(m.id)}
+            onRemove={() => void remove(m.id)}
+            onCancelRemove={() => setConfirmRemove(null)}
           />
         ))}
-        {!info.translate && <SettingsRow icon="alert" title="找不到翻译模型目录" />}
+      </SettingsGroup>
+
+      <SettingsGroup title="机器翻译">
+        {list.mt.map((m) => (
+          <ModelRow
+            key={m.id}
+            model={m}
+            job={job}
+            capturing={capturing}
+            busy={busyId === m.id}
+            anyJob={job !== null}
+            confirmRemove={confirmRemove === m.id}
+            onDownload={() => void download(m.id)}
+            onCancel={() => job && void cancel(job.jobId)}
+            onSelect={() => void select(m.id)}
+            onRemove={() => void remove(m.id)}
+            onCancelRemove={() => setConfirmRemove(null)}
+          />
+        ))}
       </SettingsGroup>
 
       <p className="px-1 text-[var(--color-ink-2)] text-[0.7rem] leading-relaxed">
-        模型随应用版本更新；用户设置不在应用包内，升级不会丢失。
-        {info.translate?.some((m) => !m.installed) && (
-          <>
-            {' '}
-            缺哪个就运行 <span className="font-mono">pnpm fetch:mt</span> 下载并转换。
-          </>
+        {connected ? '可选模型下载需联网。' : '无法解析模型存储目录，可选模型暂不可用。'}
+        {connected && (
+          <button type="button" className="ml-1 underline underline-offset-2" onClick={openModelsDir}>
+            打开模型目录
+          </button>
         )}
       </p>
     </Page>
   )
 }
 
-function LicenseTag({ entry }: { entry: ModelEntry }) {
+interface RowProps {
+  model: ModelStatus
+  job: ModelJobStatus | null
+  capturing: boolean
+  busy: boolean
+  anyJob: boolean
+  confirmRemove: boolean
+  onDownload: () => void
+  onCancel: () => void
+  onSelect: () => void
+  onRemove: () => void
+  onCancelRemove: () => void
+}
+
+function ModelRow({
+  model,
+  job,
+  capturing,
+  busy,
+  anyJob,
+  confirmRemove,
+  onDownload,
+  onCancel,
+  onSelect,
+  onRemove,
+  onCancelRemove,
+}: RowProps) {
+  const activeJob = job && job.modelId === model.id ? job : null
+  const licenses = [...new Set(model.licenses.map((l) => l.license))]
+  const needsAttribution = model.licenses.some((l) => l.requiresAttribution)
+  const canDelete = model.installed && !model.bundled && model.downloadable && !model.selected && !capturing && !anyJob
+
   return (
-    <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-      <span className="font-mono">{entry.license}</span>
-      {entry.requiresAttribution && '· 该许可要求署名'}
-    </span>
+    <SettingsRow
+      icon={model.kind === 'asr' ? 'waveform' : 'translate'}
+      title={
+        <span className="flex flex-wrap items-center gap-1.5">
+          {model.title}
+          {model.selected && <StatusBadge tone="ok">使用中</StatusBadge>}
+          {model.bundled && <StatusBadge tone="muted">内置</StatusBadge>}
+          {!model.selected && statusBadge(model)}
+        </span>
+      }
+      description={
+        <span>
+          约 {formatBytes(model.installedBytes)}
+          {licenses.length > 0 && ` · ${licenses.join(' / ')}${needsAttribution ? '（需署名）' : ''}`}
+          {model.installed && !model.complete && ' · 文件不完整，请重新下载'}
+          {!model.bundled && !model.downloadable && ' · 模型包尚未发布'}
+        </span>
+      }
+      control={
+        <div className="flex items-center gap-2">
+          {activeJob ? (
+            <>
+              <div className="flex flex-col items-end gap-1">
+                <ProgressBar value={activeJob.percent ?? null} label={`${model.title} 下载进度`} />
+                <span className="font-mono text-[0.65rem] text-[var(--color-ink-2)]">
+                  {phaseLabel(activeJob.phase)}
+                  {activeJob.percent != null && ` ${Math.round(activeJob.percent)}%`}
+                </span>
+              </div>
+              <Button size="sm" variant="ghost" onClick={onCancel}>
+                取消
+              </Button>
+            </>
+          ) : (
+            <>
+              {model.selected ? null : model.installed && model.complete ? (
+                <Button size="sm" onClick={onSelect} disabled={busy}>
+                  使用
+                </Button>
+              ) : model.downloadable ? (
+                <Button size="sm" variant="primary" icon="download" onClick={onDownload} disabled={busy || anyJob}>
+                  {model.installed ? '重新下载' : '下载'}
+                </Button>
+              ) : null}
+
+              {canDelete &&
+                (confirmRemove ? (
+                  <>
+                    <Button size="sm" variant="danger" onClick={onRemove} disabled={busy}>
+                      确认删除
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={onCancelRemove}>
+                      取消
+                    </Button>
+                  </>
+                ) : (
+                  <Button size="sm" variant="ghost" onClick={onRemove} disabled={busy}>
+                    删除
+                  </Button>
+                ))}
+            </>
+          )}
+        </div>
+      }
+    />
   )
+}
+
+function statusBadge(model: ModelStatus) {
+  if (model.complete) return <StatusBadge tone="ok">已下载</StatusBadge>
+  if (model.installed) return <StatusBadge tone="danger">文件不完整</StatusBadge>
+  if (model.downloadable) return <StatusBadge tone="warn">未安装</StatusBadge>
+  return <StatusBadge tone="muted">资源尚未发布</StatusBadge>
+}
+
+function phaseLabel(phase: ModelPhase): string {
+  switch (phase) {
+    case ModelPhase.Downloading:
+      return '下载中'
+    case ModelPhase.Verifying:
+      return '校验中'
+    case ModelPhase.Extracting:
+      return '解压中'
+    case ModelPhase.Validating:
+      return '校验文件'
+    case ModelPhase.Done:
+      return '完成'
+    case ModelPhase.Cancelled:
+      return '已取消'
+    case ModelPhase.Failed:
+      return '失败'
+  }
+}
+
+function modelTitle(list: ModelsList, id: string): string {
+  return [...list.asr, ...list.mt].find((m) => m.id === id)?.title ?? id
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes) return '—'
+  const mb = bytes / (1024 * 1024)
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`
+  if (mb >= 10) return `${Math.round(mb)} MB`
+  return `${mb.toFixed(1)} MB`
 }

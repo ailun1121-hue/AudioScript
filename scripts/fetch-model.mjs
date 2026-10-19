@@ -10,15 +10,24 @@ import { Readable } from 'node:stream'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
-const MODEL = 'sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16'
+const argv = process.argv.slice(2)
+const argValue = (name) => {
+  const i = argv.indexOf(name)
+  return i >= 0 ? argv[i + 1] : undefined
+}
+const high = argValue('--model') === 'high'
+const printCatalog = argv.includes('--print-catalog')
+const force = argv.includes('--force')
+
+const MODEL = high
+  ? 'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20'
+  : 'sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16'
 const URL = `https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/${MODEL}.tar.bz2`
 
 const MODELS_DIR = join(ROOT, 'src-tauri', 'assets', 'models')
-const TARGET_DIR = join(MODELS_DIR, MODEL)
 const CACHE_DIR = join(ROOT, '.cache')
+const TARGET_DIR = high ? join(CACHE_DIR, 'asr-high') : join(MODELS_DIR, MODEL)
 const ARCHIVE = join(CACHE_DIR, `${MODEL}.tar.bz2`)
-
-const force = process.argv.includes('--force')
 
 async function missingFiles() {
   let entries
@@ -61,7 +70,7 @@ async function download() {
 }
 
 function extract() {
-  const r = spawnSync('tar', ['-xjf', ARCHIVE, '-C', MODELS_DIR], {
+  const r = spawnSync('tar', ['-xjf', ARCHIVE, '-C', dirname(TARGET_DIR)], {
     stdio: 'inherit',
   })
   if (r.error) {
@@ -119,17 +128,49 @@ async function dirSize(dir) {
   return total
 }
 
+async function sha256File(path) {
+  const { createHash } = await import('node:crypto')
+  const { createReadStream } = await import('node:fs')
+  return new Promise((resolvePromise, reject) => {
+    const hash = createHash('sha256')
+    createReadStream(path)
+      .on('data', (chunk) => hash.update(chunk))
+      .on('error', reject)
+      .on('end', () => resolvePromise(hash.digest('hex')))
+  })
+}
+
+async function reportCatalog() {
+  if (!high) return
+  if (!(await exists(ARCHIVE))) await download()
+  const sha = await sha256File(ARCHIVE)
+  const archiveSize = (await stat(ARCHIVE)).size
+  const installed = await dirSize(TARGET_DIR)
+  if (printCatalog) {
+    process.stdout.write(
+      `\nCATALOG_FRAGMENT\n${JSON.stringify(
+        { id: 'asr-high-accuracy', sha256: sha, sizeBytes: archiveSize, installedBytes: installed },
+        null,
+        2,
+      )}\n`,
+    )
+  } else {
+    process.stdout.write(`sha256=${sha}\nsizeBytes=${archiveSize}\ninstalledBytes=${installed}\n`)
+  }
+}
+
 async function main() {
   if (!force) {
     const missing = await missingFiles()
     if (missing.length === 0) {
       await prune()
       process.stdout.write(`✅ 模型已就绪：${TARGET_DIR}\n`)
+      await reportCatalog()
       return
     }
   }
 
-  await mkdir(MODELS_DIR, { recursive: true })
+  await mkdir(dirname(TARGET_DIR), { recursive: true })
   await rm(TARGET_DIR, { recursive: true, force: true })
 
   if (force || !(await exists(ARCHIVE))) {
@@ -153,6 +194,7 @@ async function main() {
   process.stdout.write(
     `✅ 模型就绪：${TARGET_DIR}\n   实占 ${(size / 1024 / 1024).toFixed(1)} MB\n`,
   )
+  await reportCatalog()
 }
 
 main().catch((e) => {

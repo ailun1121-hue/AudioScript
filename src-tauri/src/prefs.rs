@@ -197,6 +197,8 @@ mod tests {
             .into_iter()
             .collect(),
             onboarding_done: true,
+            asr_model_tier: crate::config::AsrModelTier::HighAccuracy,
+            mt_model_tier: crate::config::MtModelTier::Big,
         };
 
         save_to(&path, &p).expect("写入应成功（含创建父目录）");

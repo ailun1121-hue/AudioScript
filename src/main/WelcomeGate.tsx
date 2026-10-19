@@ -1,6 +1,7 @@
 import { PermissionPanel } from '@/main/permissions/PermissionPanel'
 import { useStore } from '@/main/store'
 import { Button } from '@/ui/Button'
+import { TitleBarSpacer } from '@/ui/TitleBarSpacer'
 import markSvg from './logo-mark.svg?raw'
 
 export function WelcomeGate() {
@@ -8,7 +9,7 @@ export function WelcomeGate() {
 
   return (
     <main className="flex h-full flex-col bg-[var(--color-surface-0)]">
-      <div data-tauri-drag-region className="h-11 shrink-0" />
+      <TitleBarSpacer />
 
       <div className="flex flex-1 items-start justify-center overflow-y-auto px-6 pb-10">
         <div className="w-full max-w-md space-y-6">

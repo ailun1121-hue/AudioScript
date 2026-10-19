@@ -1,0 +1,31 @@
+import { cn } from './cn'
+
+interface Props {
+  value: number | null
+  label?: string
+  className?: string
+}
+
+export function ProgressBar({ value, label, className }: Props) {
+  const indeterminate = value == null
+  const clamped = indeterminate ? 0 : Math.max(0, Math.min(100, value))
+
+  return (
+    <div
+      role="progressbar"
+      aria-label={label ?? '下载进度'}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={indeterminate ? undefined : Math.round(clamped)}
+      className={cn('h-1.5 w-36 overflow-hidden rounded-full bg-[var(--color-surface-2)]', className)}
+    >
+      <div
+        className={cn(
+          'h-full rounded-full bg-[var(--color-accent)] transition-[width] duration-200',
+          indeterminate && 'w-1/3 animate-pulse',
+        )}
+        style={indeterminate ? undefined : { width: `${clamped}%` }}
+      />
+    </div>
+  )
+}

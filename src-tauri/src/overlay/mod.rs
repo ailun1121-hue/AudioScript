@@ -10,7 +10,7 @@ use std::sync::Mutex;
 
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
-use crate::config::{OverlayConfig, OverlayMode};
+use crate::config::{MAX_OVERLAY_HEIGHT, MIN_OVERLAY_HEIGHT, OverlayConfig, OverlayMode};
 
 pub const LABEL: &str = "overlay";
 
@@ -195,7 +195,6 @@ pub fn toggle(app: &AppHandle) -> Result<bool, String> {
     Ok(now)
 }
 
-/// 可见性就是 `enable`：托盘 / 热键 / 主窗口按钮三条路径都汇到这里，用户藏起来之后重启不会自己冒出来。
 fn set_enable(app: &AppHandle, enable: bool) {
     let state = app.state::<OverlayState>();
     state.set_enable(enable);
@@ -245,6 +244,7 @@ pub fn config(app: &AppHandle) -> OverlayConfig {
 pub fn set_config(app: &AppHandle, cfg: OverlayConfig) -> Result<OverlayConfig, String> {
     let cfg = cfg.sanitized();
     let state = app.state::<OverlayState>();
+    let previous = state.config();
 
     if cfg.mode != state.mode() {
         set_mode(app, cfg.mode)?;
@@ -258,8 +258,74 @@ pub fn set_config(app: &AppHandle, cfg: OverlayConfig) -> Result<OverlayConfig, 
     }
 
     state.replace(cfg.clone());
+    if previous.font_size != cfg.font_size || previous.max_lines != cfg.max_lines {
+        fit_height_to_lines(app, &cfg);
+    }
     broadcast(app, &state);
     Ok(cfg)
+}
+
+const OVERLAY_LINE_HEIGHT: f64 = 1.35;
+const OVERLAY_VERTICAL_PADDING: f64 = 16.0;
+
+fn lines_height(font_size: u8, max_lines: u16) -> f64 {
+    font_size as f64 * OVERLAY_LINE_HEIGHT * max_lines as f64 + OVERLAY_VERTICAL_PADDING
+}
+
+fn fit_height_to_lines(app: &AppHandle, cfg: &OverlayConfig) {
+    let Ok(frame) = Frame::get(app) else {
+        return;
+    };
+    let Some(window) = frame.window() else {
+        return;
+    };
+
+    let (Ok(size), Ok(scale), Ok(pos)) = (
+        window.outer_size(),
+        window.scale_factor(),
+        window.outer_position(),
+    ) else {
+        tracing::warn!("读取悬浮窗尺寸失败，跳过按行数调整高度");
+        return;
+    };
+
+    let min_h = MIN_OVERLAY_HEIGHT as i32;
+    let want = ((lines_height(cfg.font_size, cfg.max_lines) * scale).round() as i32)
+        .clamp(min_h, MAX_OVERLAY_HEIGHT as i32);
+
+    let monitor = window.current_monitor().ok().flatten();
+    let (monitor_y, monitor_h) = monitor
+        .as_ref()
+        .map(|m| (m.position().y, m.size().height as i32))
+        .unwrap_or((0, MAX_OVERLAY_HEIGHT as i32));
+
+    let grow_up = pos.y + size.height as i32 / 2 > monitor_y + monitor_h / 2;
+    let available = if grow_up {
+        pos.y + size.height as i32 - monitor_y
+    } else {
+        monitor_y + monitor_h - pos.y
+    };
+    let height = want.min(available.max(min_h)).max(min_h) as u32;
+
+    if height == size.height {
+        return;
+    }
+
+    if grow_up {
+        let y = pos.y + size.height as i32 - height as i32;
+        if let Err(e) = window.set_position(tauri::PhysicalPosition::new(pos.x, y)) {
+            tracing::warn!("调整悬浮窗位置失败：{e}");
+        }
+    }
+    match window.set_size(tauri::PhysicalSize::new(size.width, height)) {
+        Ok(()) => tracing::info!(
+            font_size = cfg.font_size,
+            max_lines = cfg.max_lines,
+            height,
+            "悬浮窗高度已按设置调整"
+        ),
+        Err(e) => tracing::warn!("按行数调整悬浮窗高度失败：{e}"),
+    }
 }
 
 fn broadcast(app: &AppHandle, state: &OverlayState) {
@@ -274,12 +340,17 @@ pub fn init(
     geometry: Option<crate::config::WindowGeometry>,
 ) -> Result<(), String> {
     let frame = Frame::get(app)?;
+    let had_geometry = geometry.is_some();
 
     geometry::restore(app, geometry);
 
     let state = app.state::<OverlayState>();
     state.replace(cfg.sanitized());
     let mode = state.mode();
+
+    if !had_geometry {
+        fit_height_to_lines(app, &state.config());
+    }
 
     frame.set_click_through(mode.is_click_through())?;
     state.needs_click_through_write(mode.is_click_through());
@@ -299,7 +370,6 @@ pub fn init(
         "悬浮窗外观已应用"
     );
 
-    // 显示 MUST 排在 `state.replace()` 之后：窗口 spec 里 `visible: false`，出场前外观与几何必须已就位。
     if applied.enable {
         if let Err(e) = frame.show() {
             tracing::error!("悬浮窗启动显示失败：{e}（可在悬浮窗页手动显示）");
@@ -406,4 +476,15 @@ pub fn debug_state(app: &AppHandle) -> Result<serde_json::Value, String> {
     }
 
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lines_height_matches_the_css_budget() {
+        assert!((lines_height(22, 6) - (22.0 * 1.35 * 6.0 + 16.0)).abs() < 1e-9);
+        assert!(lines_height(48, 20) > lines_height(22, 6));
+    }
 }

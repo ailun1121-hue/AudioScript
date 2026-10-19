@@ -217,8 +217,6 @@ where
     })
 }
 
-// exclude_self 在 Windows 上走进程回环，要求 build >= 20348（Windows 11 / Server 2022）。
-// Windows 10 会返回 UnsupportedOsVersion，此时退回整设备回环（应用自身不播声音，不排除也安全）。
 fn open_started(config: &StreamConfig) -> Result<flexaudio::Stream, AudioError> {
     match open_and_start(config) {
         Ok(stream) => Ok(stream),

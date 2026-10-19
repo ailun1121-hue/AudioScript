@@ -3,10 +3,8 @@ use std::path::{Path, PathBuf};
 use ct2rs::tokenizers::hf::Tokenizer as HfTokenizer;
 
 use super::{TranslateCaps, TranslateError, Translator};
-use crate::config::TranslateConfig;
-
-pub const MODEL_EN_ZH: &str = "opus-mt-en-zh-ct2";
-pub const MODEL_ZH_EN: &str = "opus-mt-zh-en-ct2";
+use crate::config::{MtModelTier, TranslateConfig};
+use crate::models::catalog;
 
 const SOURCE_TOKENIZER: &str = "source-tokenizer.json";
 const TARGET_TOKENIZER: &str = "target-tokenizer.json";
@@ -45,6 +43,7 @@ impl ct2rs::Tokenizer for MarianTokenizer {
 pub struct LocalNmt {
     engine: Option<ct2rs::Translator<MarianTokenizer>>,
     direction: Direction,
+    tier: MtModelTier,
     model_root: PathBuf,
 }
 
@@ -55,10 +54,17 @@ enum Direction {
 }
 
 impl Direction {
-    fn dir_name(self) -> &'static str {
+    fn dir_name(self, tier: MtModelTier) -> &'static str {
+        let dirs = catalog::mt_entry(tier).direction_dirs();
         match self {
-            Self::EnZh => MODEL_EN_ZH,
-            Self::ZhEn => MODEL_ZH_EN,
+            Self::EnZh => dirs
+                .first()
+                .map(String::as_str)
+                .expect("catalog 缺少 en→zh 方向目录"),
+            Self::ZhEn => dirs
+                .get(1)
+                .map(String::as_str)
+                .expect("catalog 缺少 zh→en 方向目录"),
         }
     }
 
@@ -89,22 +95,28 @@ impl Direction {
 }
 
 impl LocalNmt {
-    pub fn new(model_root: PathBuf) -> Self {
+    pub fn new(model_root: PathBuf, tier: MtModelTier) -> Self {
         Self {
             engine: None,
             direction: Direction::EnZh,
+            tier,
             model_root,
         }
     }
 
     fn model_dir(&self) -> PathBuf {
-        self.model_root.join(self.direction.dir_name())
+        self.model_root.join(self.direction.dir_name(self.tier))
     }
 
-    fn check_model_dir(dir: &Path) -> Result<(), TranslateError> {
+    fn check_model_dir(dir: &Path, tier: MtModelTier) -> Result<(), TranslateError> {
+        let remedy = match tier {
+            MtModelTier::Base => "→ 运行 `pnpm fetch:mt` 补齐内置翻译模型",
+            MtModelTier::Big => "→ 打开「模型」页下载大模型，或切换回基础模型",
+        };
+
         if !dir.is_dir() {
             return Err(TranslateError::MissingModelFile(format!(
-                "{} 不存在。\n→ 运行 `pnpm fetch:model` 下载并转换翻译模型",
+                "{} 不存在。\n{remedy}",
                 dir.display()
             )));
         }
@@ -112,7 +124,7 @@ impl LocalNmt {
         for f in ["model.bin", SOURCE_TOKENIZER, TARGET_TOKENIZER] {
             if !dir.join(f).is_file() {
                 return Err(TranslateError::MissingModelFile(format!(
-                    "{}/{f}\n→ 模型目录不完整，重新运行 `pnpm fetch:model`",
+                    "{}/{f} 不存在。\n{remedy}",
                     dir.display()
                 )));
             }
@@ -130,7 +142,7 @@ impl Translator for LocalNmt {
         }
 
         let dir = self.model_dir();
-        Self::check_model_dir(&dir)?;
+        Self::check_model_dir(&dir, self.tier)?;
 
         let config = ct2rs::Config {
             num_threads_per_replica: 2,
@@ -212,14 +224,33 @@ mod tests {
 
     #[test]
     fn missing_model_dir_gives_actionable_error() {
-        let e = LocalNmt::check_model_dir(Path::new("/nonexistent/mt")).unwrap_err();
+        let e =
+            LocalNmt::check_model_dir(Path::new("/nonexistent/mt"), MtModelTier::Base).unwrap_err();
         let msg = e.to_string();
-        assert!(msg.contains("fetch:model"), "错误里要给出修复动作：{msg}");
+        assert!(msg.contains("fetch:mt"), "错误里要给出修复动作：{msg}");
+
+        let e =
+            LocalNmt::check_model_dir(Path::new("/nonexistent/mt"), MtModelTier::Big).unwrap_err();
+        assert!(e.to_string().contains("模型"), "{e}");
+    }
+
+    #[test]
+    fn tiers_map_to_their_direction_directories() {
+        assert_eq!(Direction::EnZh.dir_name(MtModelTier::Base), "opus-mt-en-zh-ct2");
+        assert_eq!(Direction::ZhEn.dir_name(MtModelTier::Base), "opus-mt-zh-en-ct2");
+        assert_eq!(
+            Direction::EnZh.dir_name(MtModelTier::Big),
+            "opus-mt-tc-big-en-zh-ct2"
+        );
+        assert_eq!(
+            Direction::ZhEn.dir_name(MtModelTier::Big),
+            "opus-mt-tc-big-zh-en-ct2"
+        );
     }
 
     #[test]
     fn translate_before_init_is_rejected() {
-        let mut t = LocalNmt::new(PathBuf::from("/tmp"));
+        let mut t = LocalNmt::new(PathBuf::from("/tmp"), MtModelTier::Base);
         assert!(matches!(
             t.translate("hello"),
             Err(TranslateError::NotInitialized)

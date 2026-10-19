@@ -7,7 +7,6 @@ import { type OverlayConfig, OverlayMode } from '@/shared/types'
 import { useTranscriptStream } from '@/shared/useTranscriptStream'
 import { StreamView } from './StreamView'
 
-// 与 Rust 的 `OverlayConfig::default()` 同源：这是真配置回来之前的首帧外观，改一边就要改两边。
 const DEFAULT_CONFIG: OverlayConfig = {
   enable: true,
   mode: OverlayMode.Edit,
@@ -53,7 +52,6 @@ function OverlayApp() {
     <div className="fixed inset-0">
       <StreamView
         segments={segments}
-        maxLines={config.maxLines}
         fontSize={config.fontSize}
         fontColor={config.fontColor}
         opacity={config.opacity}
