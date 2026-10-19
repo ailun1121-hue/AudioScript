@@ -54,18 +54,28 @@ pub fn restore_sentence_case(text: &str) -> String {
 }
 
 fn needs_restore(text: &str) -> bool {
-    let latin: Vec<char> = text.chars().filter(|c| c.is_ascii_alphabetic()).collect();
-    if latin.len() < MIN_LATIN {
-        return false;
+    let mut latin = 0usize;
+    let mut upper = 0usize;
+    let mut visible = 0usize;
+    for ch in text.chars() {
+        if !ch.is_whitespace() {
+            visible += 1;
+        }
+        if ch.is_ascii_alphabetic() {
+            latin += 1;
+            if ch.is_ascii_uppercase() {
+                upper += 1;
+            }
+        }
     }
 
-    let visible = text.chars().filter(|c| !c.is_whitespace()).count().max(1);
-    if (latin.len() as f32 / visible as f32) < LATIN_RATIO {
+    if latin < MIN_LATIN {
         return false;
     }
-
-    let upper = latin.iter().filter(|c| c.is_ascii_uppercase()).count();
-    upper as f32 / latin.len() as f32 >= UPPER_RATIO
+    if (latin as f32 / visible.max(1) as f32) < LATIN_RATIO {
+        return false;
+    }
+    upper as f32 / latin as f32 >= UPPER_RATIO
 }
 
 #[cfg(test)]

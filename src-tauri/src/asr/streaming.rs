@@ -7,8 +7,6 @@ use super::{AsrEngine, AsrError, EngineCaps, TARGET_SAMPLE_RATE};
 use crate::config::AsrConfig;
 use crate::transcript::TranscriptSegment;
 
-pub const FEED_CHUNK_SAMPLES: usize = 1600;
-
 const TAIL_SILENCE_SECONDS: f32 = 0.3;
 
 #[derive(Debug, Clone)]
@@ -135,15 +133,13 @@ impl StreamingAdapter {
 
             if let Some(r) = rec.get_result(stream) {
                 if !r.text.trim().is_empty() {
-                    pending = Some((
-                        self.utterance,
-                        crate::asr::latin_case::restore_sentence_case(&r.text),
-                    ));
+                    pending = Some((self.utterance, r.text));
                 }
             }
 
             if rec.is_endpoint(stream) {
                 if let Some((utt, text)) = pending.take() {
+                    let text = crate::asr::latin_case::restore_sentence_case(&text);
                     let end = self.now_ms();
                     out.push(
                         self.builder
@@ -158,6 +154,7 @@ impl StreamingAdapter {
         }
 
         if let Some((utt, text)) = pending {
+            let text = crate::asr::latin_case::restore_sentence_case(&text);
             let end = self.now_ms();
             out.push(
                 self.builder
