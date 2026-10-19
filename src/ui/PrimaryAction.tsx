@@ -1,4 +1,4 @@
-import { type CSSProperties, useCallback, useEffect, useRef } from 'react'
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react'
 import { cn } from './cn'
 import { Icon } from './Icon'
 
@@ -50,6 +50,30 @@ function useSpecularFollow() {
   return { ref, onPointerMove }
 }
 
+function formatElapsed(ms: number): string {
+  const total = Math.floor(ms / 1000)
+  const seconds = String(total % 60).padStart(2, '0')
+  const minutes = String(Math.floor(total / 60) % 60).padStart(2, '0')
+  const hours = Math.floor(total / 3600)
+  return hours > 0 ? `${hours}:${minutes}:${seconds}` : `${minutes}:${seconds}`
+}
+
+function useElapsed(capturing: boolean): number {
+  const [elapsed, setElapsed] = useState(0)
+
+  useEffect(() => {
+    if (!capturing) {
+      setElapsed(0)
+      return
+    }
+    const startedAt = Date.now()
+    const id = window.setInterval(() => setElapsed(Date.now() - startedAt), 1000)
+    return () => window.clearInterval(id)
+  }, [capturing])
+
+  return elapsed
+}
+
 const PEAK = 14
 
 const RIM: CSSProperties = {
@@ -66,6 +90,7 @@ const POOL: CSSProperties = {
 
 export function PrimaryAction({ capturing, pending, activeDevice, onToggle }: Props) {
   const { ref, onPointerMove } = useSpecularFollow()
+  const elapsed = useElapsed(capturing)
 
   const state = pending
     ? { label: capturing ? '停止中…' : '启动中…', dot: 'bg-[var(--color-warn)] animate-pulse' }
@@ -107,7 +132,17 @@ export function PrimaryAction({ capturing, pending, activeDevice, onToggle }: Pr
 
       <p className="flex items-center gap-1.5 px-0.5 text-[var(--color-ink-2)] text-[0.7rem]">
         <span aria-hidden="true" className={cn('inline-block size-1.5 shrink-0 rounded-full', state.dot)} />
-        <span className="truncate">{state.label}</span>
+        {capturing ? (
+          <>
+            <span className="shrink-0 tabular-nums">{formatElapsed(elapsed)}</span>
+            <span aria-hidden="true" className="shrink-0 opacity-60">
+              ·
+            </span>
+            <span className="truncate">{state.label}</span>
+          </>
+        ) : (
+          <span className="truncate">{state.label}</span>
+        )}
       </p>
     </div>
   )
