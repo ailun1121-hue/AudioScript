@@ -29,16 +29,22 @@ impl ResolutionVia {
     }
 }
 
+// tauri 的 resource_dir() 内部会 canonicalize，Windows 上得到 `\\?\C:\...`。
+// CTranslate2 拼接文件名用正斜杠，而 verbatim 路径不做斜杠转换，会导致模型打不开。
+fn resolved(path: PathBuf, via: ResolutionVia) -> ResolvedModelDir {
+    ResolvedModelDir {
+        path: dunce::simplified(&path).to_path_buf(),
+        via,
+    }
+}
+
 pub fn resolve_models_root(app: &AppHandle) -> Result<ResolvedModelDir, String> {
     let mut tried: Vec<String> = Vec::new();
 
     if let Ok(raw) = std::env::var(ENV_MODEL_DIR) {
         let p = PathBuf::from(&raw);
         if p.is_dir() {
-            return Ok(ResolvedModelDir {
-                path: p,
-                via: ResolutionVia::EnvOverride,
-            });
+            return Ok(resolved(p, ResolutionVia::EnvOverride));
         }
         tried.push(format!("{ENV_MODEL_DIR}={raw} （目录不存在）"));
     }
@@ -47,10 +53,7 @@ pub fn resolve_models_root(app: &AppHandle) -> Result<ResolvedModelDir, String> 
         Ok(res) => {
             let p = res.join("models");
             if p.is_dir() {
-                return Ok(ResolvedModelDir {
-                    path: p,
-                    via: ResolutionVia::BundledResource,
-                });
+                return Ok(resolved(p, ResolutionVia::BundledResource));
             }
             tried.push(format!("{} （不存在）", p.display()));
         }
@@ -59,10 +62,7 @@ pub fn resolve_models_root(app: &AppHandle) -> Result<ResolvedModelDir, String> 
 
     let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/models");
     if p.is_dir() {
-        return Ok(ResolvedModelDir {
-            path: p,
-            via: ResolutionVia::DevSourceTree,
-        });
+        return Ok(resolved(p, ResolutionVia::DevSourceTree));
     }
     tried.push(format!("{} （不存在）", p.display()));
 
@@ -187,5 +187,18 @@ mod tests {
     #[test]
     fn missing_dir_is_an_error_not_a_panic() {
         assert!(model_dir_is_complete(Path::new("/nonexistent/models")).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn verbatim_resource_paths_are_simplified() {
+        let r = resolved(
+            PathBuf::from(r"\\?\C:\Users\x\AppData\Local\AudioScript\models"),
+            ResolutionVia::BundledResource,
+        );
+        assert_eq!(
+            r.path,
+            Path::new(r"C:\Users\x\AppData\Local\AudioScript\models")
+        );
     }
 }

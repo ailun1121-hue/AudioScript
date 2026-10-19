@@ -330,11 +330,12 @@ dependencies = [
 
 [[package]]
 name = "audioscript"
-version = "0.1.1"
+version = "0.1.4"
 dependencies = [
  "anyhow",
  "block2",
  "ct2rs",
+ "dunce",
  "flexaudio",
  "flexaudio-os-macos",
  "objc2",

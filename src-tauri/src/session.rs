@@ -541,47 +541,102 @@ pub fn stop(app: &AppHandle) -> Result<(), String> {
         .expect("session running mutex poisoned")
         .take()
     else {
+        state.set_status(TaskStatus::Ready);
         return Ok(());
     };
 
-    drop(session.capture);
+    state.set_status(TaskStatus::Ready);
+    emit_status(app, TaskStatus::Ready);
+    tracing::info!("转写会话已停止，收尾转入后台");
 
-    let tail = {
-        let mut eng = session.engine.lock().expect("engine mutex poisoned");
-        let t = eng.flush().map_err(|e| format!("冲刷引擎失败：{e}"))?;
-        eng.shutdown();
-        t
-    };
+    // 收尾要 join 音频线程和翻译线程、释放两套原生模型，其中任何一步都可能在
+    // Windows 设备层卡住；放进后台线程，命令线程和 UI 不再被拖住。
+    let pending = Arc::new(Mutex::new(Some(session)));
+    let app_for_teardown = app.clone();
+    let pending_for_teardown = Arc::clone(&pending);
 
-    if !tail.is_empty() {
-        let mut s = state.store.lock().expect("transcript store mutex poisoned");
-        match s.apply(tail) {
-            Ok(changed) => emit_segments(app, changed),
-            Err(e) => tracing::error!("收尾段落被状态机拒绝：{e}"),
+    let spawned = std::thread::Builder::new()
+        .name("session-teardown".into())
+        .spawn(move || {
+            let session = pending_for_teardown
+                .lock()
+                .expect("teardown slot mutex poisoned")
+                .take();
+            if let Some(session) = session {
+                teardown(&app_for_teardown, session);
+            }
+        });
+
+    if let Err(e) = spawned {
+        tracing::error!("启动收尾线程失败，改为在命令线程收尾：{e}");
+        let session = { pending.lock().expect("teardown slot mutex poisoned").take() };
+        if let Some(session) = session {
+            teardown(app, session);
         }
     }
 
-    let dropped = session.queue.clear();
+    Ok(())
+}
+
+fn teardown(app: &AppHandle, session: RunningSession) {
+    let RunningSession {
+        capture,
+        engine,
+        queue,
+        translator,
+        translate_worker,
+        ..
+    } = session;
+    let t0 = Instant::now();
+
+    tracing::info!("收尾：等待采集线程退出");
+    drop(capture);
+    tracing::info!(ms = t0.elapsed().as_millis(), "收尾：采集线程已退出");
+
+    tracing::info!("收尾：冲刷引擎");
+    let tail = {
+        let mut eng = engine.lock().expect("engine mutex poisoned");
+        let flushed = eng.flush();
+        eng.shutdown();
+        flushed
+    };
+    match tail {
+        Ok(tail) if !tail.is_empty() => {
+            let state = app.state::<SessionState>();
+            let changed = {
+                let mut s = state.store.lock().expect("transcript store mutex poisoned");
+                s.apply(tail)
+            };
+            match changed {
+                Ok(changed) => emit_segments(app, changed),
+                Err(e) => tracing::error!("收尾段落被状态机拒绝：{e}"),
+            }
+        }
+        Ok(_) => {}
+        Err(e) => tracing::error!("冲刷引擎失败：{e}"),
+    }
+    tracing::info!(ms = t0.elapsed().as_millis(), "收尾：引擎已关闭");
+
+    let dropped = queue.clear();
     if dropped > 0 {
         tracing::info!(dropped, "停止时丢弃了积压的翻译任务");
     }
-    session.queue.close();
+    queue.close();
 
-    if let Some(handle) = session.translate_worker {
+    if let Some(handle) = translate_worker {
+        tracing::info!("收尾：等待翻译线程退出");
         if let Err(e) = handle.join() {
             tracing::error!("翻译线程异常退出：{e:?}");
         }
+        tracing::info!(ms = t0.elapsed().as_millis(), "收尾：翻译线程已退出");
     }
-    session
-        .translator
+
+    tracing::info!("收尾：释放翻译引擎");
+    translator
         .lock()
         .expect("translator mutex poisoned")
         .shutdown();
-
-    state.set_status(TaskStatus::Ready);
-    emit_status(app, TaskStatus::Ready);
-    tracing::info!("转写会话已停止");
-    Ok(())
+    tracing::info!(ms = t0.elapsed().as_millis(), "收尾完成");
 }
 
 pub fn clear(app: &AppHandle) {

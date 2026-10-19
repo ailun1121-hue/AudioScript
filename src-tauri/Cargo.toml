@@ -1,6 +1,6 @@
 [package]
 name = "audioscript"
-version = "0.1.1"
+version = "0.1.4"
 description = "AudioScript 声稿 — 离线优先语音转写，带悬浮流式字幕窗"
 authors = ["Nico"]
 license = "MIT"
@@ -22,6 +22,8 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# 去掉 Windows 上 resource_dir() 返回的 `\\?\` 前缀（CTranslate2 不认 verbatim 路径）。
+dunce = "1"
 # ⚠️ macos-private-api 是 tauri-nspanel 换 NSPanel 的前提，代价是无法上架 Mac App Store
 # （本项目走 GitHub Releases 分发，可接受）。
 tauri = { version = "2.12", features = ["tray-icon", "image-png", "macos-private-api"] }

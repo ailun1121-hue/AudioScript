@@ -126,7 +126,7 @@ impl Translator for LocalNmt {
         self.direction = Direction::resolve(&cfg.source_lang, &cfg.target_lang)?;
 
         if let Some(dir) = &cfg.model_dir {
-            self.model_root = PathBuf::from(dir);
+            self.model_root = dunce::simplified(Path::new(dir)).to_path_buf();
         }
 
         let dir = self.model_dir();

@@ -192,12 +192,8 @@ where
         ..Default::default()
     };
 
-    let mut stream = flexaudio::open(config).map_err(classify_open_error)?;
+    let stream = open_started(&config)?;
     let native_rate = stream.native_format().0;
-
-    stream
-        .start()
-        .map_err(|e| AudioError::Start(e.to_string()))?;
 
     let device_name = resolve_device_name(kind, device_id);
 
@@ -219,6 +215,31 @@ where
         device_sample_rate: native_rate,
         device_name,
     })
+}
+
+// exclude_self 在 Windows 上走进程回环，要求 build >= 20348（Windows 11 / Server 2022）。
+// Windows 10 会返回 UnsupportedOsVersion，此时退回整设备回环（应用自身不播声音，不排除也安全）。
+fn open_started(config: &StreamConfig) -> Result<flexaudio::Stream, AudioError> {
+    match open_and_start(config) {
+        Ok(stream) => Ok(stream),
+        #[cfg(target_os = "windows")]
+        Err(e)
+            if config.exclude_self
+                && e.kind() == flexaudio::ErrorKind::UnsupportedOsVersion =>
+        {
+            tracing::warn!("当前 Windows 版本不支持进程回环，改为采集整设备音频");
+            let mut fallback = config.clone();
+            fallback.exclude_self = false;
+            open_and_start(&fallback).map_err(classify_open_error)
+        }
+        Err(e) => Err(classify_open_error(e)),
+    }
+}
+
+fn open_and_start(config: &StreamConfig) -> Result<flexaudio::Stream, flexaudio::Error> {
+    let mut stream = flexaudio::open(config.clone())?;
+    stream.start()?;
+    Ok(stream)
 }
 
 fn spawn_worker<S>(
@@ -363,10 +384,7 @@ pub fn probe_loopback(window: Duration) -> Result<LoopbackProbe, AudioError> {
         ..Default::default()
     };
 
-    let mut stream = flexaudio::open(config).map_err(classify_open_error)?;
-    stream
-        .start()
-        .map_err(|e| AudioError::Start(e.to_string()))?;
+    let stream = open_started(&config)?;
 
     let acc = Arc::new(Mutex::new(ProbeAccum::default()));
     let stop = Arc::new(AtomicBool::new(false));
