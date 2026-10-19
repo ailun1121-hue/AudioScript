@@ -7,6 +7,11 @@
 <p>监听系统声音输出，把外语播客与外文视频实时转成「原文 + 中文译文」双语悬浮字幕。识别与翻译全部在本机完成。</p>
 
 <p>
+  <a href="https://niyongsheng.github.io/AudioScript/">官网</a> ·
+  <a href="https://github.com/niyongsheng/AudioScript/releases/latest">下载</a>
+</p>
+
+<p>
   <img src="https://img.shields.io/badge/macOS-14.2%2B-111111?style=flat-square&logo=apple&logoColor=white" alt="macOS 14.2+">
   <img src="https://img.shields.io/badge/Tauri-2-24C8DB?style=flat-square&logo=tauri&logoColor=white" alt="Tauri 2">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-555555?style=flat-square" alt="MIT"></a>
