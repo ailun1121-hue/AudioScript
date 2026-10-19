@@ -1,6 +1,7 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
+use tauri::{AppHandle, Emitter};
 use typeshare::typeshare;
 
 use crate::audio;
@@ -75,7 +76,7 @@ pub fn request_mic() -> Result<MicRequestResult, String> {
     request_mic_impl()
 }
 
-pub fn probe_system_audio() -> SystemAudioProbe {
+pub fn probe_system_audio(app: &AppHandle) -> SystemAudioProbe {
     let _guard = match PROBING.try_lock() {
         Ok(g) => g,
         Err(_) => {
@@ -112,7 +113,8 @@ pub fn probe_system_audio() -> SystemAudioProbe {
     let mut attempts = 0;
     let probe = loop {
         attempts += 1;
-        match audio::probe_loopback(PROBE_WINDOW) {
+        let level_app = app.clone();
+        match audio::probe_loopback(PROBE_WINDOW, move |chunk| emit_level(&level_app, chunk)) {
             Ok(p) => {
                 let prompt_swallowed_the_window =
                     p.samples == 0 && attempts < 2 && audio_capture_promptable();
@@ -154,6 +156,16 @@ pub fn probe_system_audio() -> SystemAudioProbe {
         samples: probe.samples.min(u32::MAX as u64) as u32,
         active_processes: active,
         detail,
+    }
+}
+
+fn emit_level(app: &AppHandle, chunk: &[f32]) {
+    if chunk.is_empty() {
+        return;
+    }
+    let mean_sq = chunk.iter().map(|s| (*s as f64) * (*s as f64)).sum::<f64>() / chunk.len() as f64;
+    if let Err(e) = app.emit(crate::session::EVENT_LEVEL, mean_sq.sqrt()) {
+        tracing::debug!("广播检测电平失败（可能没有窗口在监听）：{e}");
     }
 }
 

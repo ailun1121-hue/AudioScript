@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -98,7 +98,7 @@ const EMIT_INTERVAL: Duration = Duration::from_millis(100);
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 
-const LEVEL_INTERVAL: Duration = Duration::from_millis(100);
+const LEVEL_INTERVAL: Duration = Duration::from_millis(200);
 
 #[typeshare::typeshare]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -136,7 +136,17 @@ fn spawn_emitter(app: &AppHandle) -> Sender<UiEvent> {
     let spawned = std::thread::Builder::new()
         .name("session-events".into())
         .spawn(move || {
-            while let Ok(event) = rx.recv() {
+            loop {
+                let event = match rx.recv_timeout(Duration::from_secs(5)) {
+                    Ok(event) => event,
+                    Err(RecvTimeoutError::Timeout) => {
+                        tracing::debug!("事件线程心跳");
+                        continue;
+                    }
+                    Err(RecvTimeoutError::Disconnected) => break,
+                };
+
+                let t0 = Instant::now();
                 match event {
                     UiEvent::Status(status) => emit_status(&app, status),
                     UiEvent::Segments(segments) => emit_segments(&app, segments),
@@ -150,6 +160,11 @@ fn spawn_emitter(app: &AppHandle) -> Sender<UiEvent> {
                             tracing::debug!("广播音频状态失败（可能没有窗口）：{e}");
                         }
                     }
+                }
+
+                let ms = t0.elapsed().as_millis();
+                if ms >= 300 {
+                    tracing::warn!(ms, "事件广播耗时异常");
                 }
             }
             tracing::debug!("事件线程退出");
@@ -647,6 +662,9 @@ pub fn stop(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     };
     tracing::info!("停止：已摘除运行会话");
+
+    session.capture.request_stop();
+    session.queue.close();
 
     state.set_status(TaskStatus::Ready);
     let _ = session.events.send(UiEvent::Status(TaskStatus::Ready));

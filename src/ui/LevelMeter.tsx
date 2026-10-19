@@ -9,6 +9,28 @@ const CEIL_DB = -6
 
 const FALL = 0.75
 
+function levelRatio(value: number): number {
+  const db = 20 * Math.log10(Math.max(value, 1e-9))
+  return Math.min(1, Math.max(0, (db - FLOOR_DB) / (CEIL_DB - FLOOR_DB)))
+}
+
+export function LevelBars({ level }: { level: number }) {
+  const dots = Math.ceil(levelRatio(level) * SEGMENTS.length)
+  return (
+    <div className="flex items-center gap-1" role="img" aria-label="输入电平">
+      {SEGMENTS.map((seg) => (
+        <span
+          key={seg}
+          className={cn(
+            'size-1.5 rounded-full',
+            seg < dots ? 'bg-[var(--color-success)]' : 'bg-[var(--color-surface-2)]',
+          )}
+        />
+      ))}
+    </div>
+  )
+}
+
 export function LevelMeter({ active }: { active: boolean }) {
   const [dots, setDots] = useState(0)
   const peak = useRef(0)
@@ -24,8 +46,7 @@ export function LevelMeter({ active }: { active: boolean }) {
     let unlisten: (() => void) | undefined
 
     on<number>(EVENT.level, (rms) => {
-      const db = 20 * Math.log10(Math.max(rms, 1e-9))
-      const target = Math.min(1, Math.max(0, (db - FLOOR_DB) / (CEIL_DB - FLOOR_DB)))
+      const target = levelRatio(rms)
       peak.current = Math.max(target, peak.current * FALL)
       setDots(Math.ceil(peak.current * SEGMENTS.length))
     }).then((fn) => {

@@ -330,7 +330,7 @@ dependencies = [
 
 [[package]]
 name = "audioscript"
-version = "0.1.4"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "block2",
@@ -356,6 +356,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-single-instance",
  "thiserror 2.0.21",
+ "tokio",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",

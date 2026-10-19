@@ -34,17 +34,6 @@ function compareVersions(a: string, b: string): number {
   return 0
 }
 
-function describeBuildTime(ms: number | null): string {
-  if (!ms) return '未知'
-  const mins = Math.floor((Date.now() - ms) / 60_000)
-  const at = new Date(ms).toLocaleString('zh-CN', { hour12: false })
-  if (mins < 1) return `${at}（刚刚）`
-  if (mins < 60) return `${at}（${mins} 分钟前）`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${at}（${hours} 小时前）`
-  return `${at}（${Math.floor(hours / 24)} 天前）`
-}
-
 function describeUpdate(state: UpdateState, current: string | null): ReactNode {
   switch (state.kind) {
     case 'checking':
@@ -143,6 +132,7 @@ export function AboutPage() {
             ) : (
               <Button
                 size="sm"
+                icon="refresh"
                 onClick={() => void checkForUpdates()}
                 disabled={!info}
                 pending={update.kind === 'checking'}
@@ -160,11 +150,6 @@ export function AboutPage() {
               {info?.platform ?? '—'} · {info?.arch ?? '—'}
             </Mono>
           }
-        />
-        <SettingsRow
-          icon="refresh"
-          title="构建时间"
-          control={<Mono>{describeBuildTime(info?.builtAtMs ?? null)}</Mono>}
         />
       </SettingsGroup>
 

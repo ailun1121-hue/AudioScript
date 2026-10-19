@@ -46,29 +46,52 @@ impl Serialize for CmdError {
 
 #[tauri::command]
 pub async fn dispatch(app: AppHandle, name: String, args: Value) -> Result<Value, CmdError> {
+    tracing::debug!(cmd = %name, "命令到达");
+    let t0 = std::time::Instant::now();
+
     let out = route_async(&app, &name, &args).await;
 
     if let Err(e) = &out {
         tracing::warn!(cmd = %name, error = %e, "命令失败");
+    } else if name == "session_stop" {
+        tracing::info!(ms = t0.elapsed().as_millis(), "停止命令已返回");
     }
 
     out
 }
 
+async fn run_blocking<F, R>(task: F, timeout: std::time::Duration) -> Result<R, CmdError>
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::Builder::new()
+        .name("cmd-blocking".into())
+        .spawn(move || {
+            let _ = tx.send(task());
+        })
+        .map_err(|e| CmdError::Failed(format!("启动后台线程失败：{e}")))?;
+
+    match tokio::time::timeout(timeout, rx).await {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(_)) => Err(CmdError::Failed("后台任务异常退出".into())),
+        Err(_) => Err(CmdError::Failed("后台任务超时，请重试".into())),
+    }
+}
+
 pub async fn route_async(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdError> {
-    if matches!(
-        name,
-        "permission_request_mic"
-            | "permission_probe_system_audio"
-            | "session_start"
-            | "session_stop"
-            | "models_list"
-            | "model_remove"
-    ) {
+    let timeout = match name {
+        "session_start" => Some(std::time::Duration::from_secs(60)),
+        "permission_probe_system_audio" => Some(std::time::Duration::from_secs(30)),
+        "permission_request_mic" => Some(std::time::Duration::from_secs(40)),
+        "model_remove" => Some(std::time::Duration::from_secs(60)),
+        _ => None,
+    };
+
+    if let Some(timeout) = timeout {
         let (app, name, args) = (app.clone(), name.to_string(), args.clone());
-        return tauri::async_runtime::spawn_blocking(move || route(&app, &name, &args))
-            .await
-            .map_err(|e| CmdError::Failed(format!("后台任务失败：{e}")))?;
+        return run_blocking(move || route(&app, &name, &args), timeout).await?;
     }
 
     route(app, name, args)
@@ -128,7 +151,7 @@ pub fn route(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdErro
             if app.state::<session::SessionState>().is_running() {
                 return Err(CmdError::Failed("正在转写中，请先停止再检测".into()));
             }
-            Ok(json!(permission::probe_system_audio()))
+            Ok(json!(permission::probe_system_audio(app)))
         }
 
         "open_privacy_settings" => {

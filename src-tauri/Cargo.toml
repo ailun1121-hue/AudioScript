@@ -1,6 +1,6 @@
 [package]
 name = "audioscript"
-version = "0.1.4"
+version = "0.2.2"
 description = "AudioScript 声稿 — 离线优先语音转写，带悬浮流式字幕窗"
 authors = ["Nico"]
 license = "MIT"
@@ -56,6 +56,7 @@ anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+tokio = { version = "1", features = ["sync", "time"] }
 
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

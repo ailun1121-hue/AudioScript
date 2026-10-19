@@ -91,6 +91,26 @@ interface Store {
   refreshHotkeys: () => Promise<void>
 }
 
+const STOP_TIMEOUT_MS = 8_000
+
+const START_TIMEOUT_MS = 60_000
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(message), ms)
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        window.clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
+
 const Ctx = createContext<Store | null>(null)
 
 export function useStore(): Store {
@@ -269,10 +289,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setPermissionError(null)
     try {
       if (status === TaskStatus.Capturing) {
-        setStatus(await sessionStop())
+        setStatus(await withTimeout(sessionStop(), STOP_TIMEOUT_MS, '停止请求超时：请重试，或使用托盘「停止转写」'))
         setActiveDevice(null)
       } else {
-        setStatus(await sessionStart(device || undefined, translateEngine, sourceLang, audioSource))
+        setStatus(
+          await withTimeout(
+            sessionStart(device || undefined, translateEngine, sourceLang, audioSource),
+            START_TIMEOUT_MS,
+            '开始转写超时，请重试',
+          ),
+        )
         setActiveDevice((await sessionStatus()).device ?? null)
         void refreshPermission()
       }

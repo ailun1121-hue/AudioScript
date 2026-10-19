@@ -15,7 +15,50 @@ pub mod transcript;
 pub mod translate;
 pub mod tray;
 
-use tauri::Manager;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use tauri::{AppHandle, Manager};
+
+static MAIN_TICK_MS: AtomicU64 = AtomicU64::new(0);
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn spawn_main_thread_watchdog(app: &AppHandle) {
+    MAIN_TICK_MS.store(now_ms(), Ordering::Relaxed);
+    let app = app.clone();
+    let spawned = std::thread::Builder::new()
+        .name("main-thread-watchdog".into())
+        .spawn(move || {
+            let mut last_warn = 0u64;
+            loop {
+                if app
+                    .run_on_main_thread(|| {
+                        MAIN_TICK_MS.store(now_ms(), Ordering::Relaxed);
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+
+                std::thread::sleep(Duration::from_secs(2));
+                let now = now_ms();
+                let gap = now.saturating_sub(MAIN_TICK_MS.load(Ordering::Relaxed));
+                if gap >= 5000 && now.saturating_sub(last_warn) >= 10_000 {
+                    last_warn = now;
+                    tracing::warn!(gap_ms = gap, "主线程超过 {}ms 未处理任务", gap);
+                }
+            }
+        });
+    if let Err(e) = spawned {
+        tracing::warn!("主线程看门狗启动失败：{e}");
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -60,6 +103,7 @@ pub fn run() {
             handle.manage(log::LogDir(log::init(&handle)));
 
             paths::log_startup_selfcheck(&handle);
+            spawn_main_thread_watchdog(&handle);
 
             let cleanup_handle = handle.clone();
             if let Err(e) = std::thread::Builder::new()

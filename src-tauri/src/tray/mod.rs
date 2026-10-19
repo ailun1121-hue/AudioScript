@@ -13,6 +13,7 @@ pub const TRAY_ID: &str = "audioscript-tray";
 
 mod id {
     pub const SHOW_MAIN: &str = "show_main";
+    pub const STOP_SESSION: &str = "stop_session";
     pub const TOGGLE_OVERLAY: &str = "toggle_overlay";
     pub const OVERLAY_LOCKED: &str = "overlay_locked";
     pub const QUIT: &str = "quit";
@@ -26,6 +27,7 @@ pub struct TrayState {
 
 pub fn init(app: &AppHandle) -> tauri::Result<()> {
     let show_main = MenuItemBuilder::with_id(id::SHOW_MAIN, "显示主窗口").build(app)?;
+    let stop_session = MenuItemBuilder::with_id(id::STOP_SESSION, "停止转写").build(app)?;
     let toggle_overlay =
         MenuItemBuilder::with_id(id::TOGGLE_OVERLAY, "显示 / 隐藏悬浮窗").build(app)?;
 
@@ -40,6 +42,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     let menu = MenuBuilder::new(app)
         .items(&[
             &show_main,
+            &stop_session,
             &sep1,
             &toggle_overlay,
             &locked_item,
@@ -97,6 +100,18 @@ fn tray_icon(app: &AppHandle) -> tauri::Result<tauri::image::Image<'static>> {
 fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
     match event.id().as_ref() {
         id::SHOW_MAIN => lifecycle::show_main(app),
+        id::STOP_SESSION => {
+            let app = app.clone();
+            if let Err(e) = std::thread::Builder::new()
+                .name("tray-stop".into())
+                .spawn(move || match crate::session::stop(&app) {
+                    Ok(()) => tracing::info!("托盘：已请求停止转写"),
+                    Err(e) => tracing::error!("托盘停止转写失败：{e}"),
+                })
+            {
+                tracing::error!("无法启动托盘停止线程：{e}");
+            }
+        }
         id::TOGGLE_OVERLAY => {
             if let Err(e) = overlay::toggle(app) {
                 tracing::error!("{e}");

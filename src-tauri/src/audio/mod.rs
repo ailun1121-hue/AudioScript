@@ -92,6 +92,10 @@ impl CaptureHandle {
     pub fn device_name(&self) -> &str {
         &self.device_name
     }
+
+    pub fn request_stop(&self) {
+        self.stop.store(true, Ordering::SeqCst);
+    }
 }
 
 impl Drop for CaptureHandle {
@@ -370,7 +374,10 @@ pub struct LoopbackProbe {
     pub denied: bool,
 }
 
-pub fn probe_loopback(window: Duration) -> Result<LoopbackProbe, AudioError> {
+pub fn probe_loopback<S>(window: Duration, sink: S) -> Result<LoopbackProbe, AudioError>
+where
+    S: FnMut(&[f32]) + Send + 'static,
+{
     let config = StreamConfig {
         kind: SourceKind::SystemLoopback,
         device_id: None,
@@ -387,7 +394,7 @@ pub fn probe_loopback(window: Duration) -> Result<LoopbackProbe, AudioError> {
     let acc = Arc::new(Mutex::new(ProbeAccum::default()));
     let stop = Arc::new(AtomicBool::new(false));
 
-    let thread = spawn_worker(stream, Arc::clone(&stop), |_| {}, Some(Arc::clone(&acc)))?;
+    let thread = spawn_worker(stream, Arc::clone(&stop), sink, Some(Arc::clone(&acc)))?;
 
     std::thread::sleep(window);
     stop.store(true, Ordering::SeqCst);

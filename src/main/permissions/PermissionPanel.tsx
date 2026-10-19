@@ -9,9 +9,11 @@ import {
   type SystemAudioProbe,
   SystemAudioVerdict,
 } from '@/shared/ipc'
+import { isWindows } from '@/shared/platform'
 import { TaskStatus } from '@/shared/types'
 import { Alert } from '@/ui/Alert'
 import { Button } from '@/ui/Button'
+import { LevelBars, LevelMeter } from '@/ui/LevelMeter'
 import { SettingsGroup, SettingsRow } from '@/ui/Settings'
 import { StatusBadge } from '@/ui/StatusBadge'
 
@@ -142,22 +144,48 @@ export function PermissionPanel() {
         <SettingsRow
           icon="speaker"
           title="系统声音录制"
-          description={probeDescription(probe)}
+          description={
+            isWindows ? (
+              'Windows 暂不提供系统声音检测；转写时的系统声音采集仍然可用。'
+            ) : (
+              <>
+                {probing ? '正在检测系统声音，请保持播放。' : probeDescription(probe)}
+                {probing && (
+                  <span className="mt-1 flex items-center gap-2">
+                    <LevelMeter active />
+                    <span className="font-mono">实时电平</span>
+                  </span>
+                )}
+                {!probing && probe && (
+                  <span className="mt-1 flex items-center gap-2">
+                    <LevelBars level={probe.peak} />
+                    <span className="font-mono">
+                      峰值 {formatDbfs(probe.peak)} · 均值 {formatDbfs(probe.rms)}
+                    </span>
+                  </span>
+                )}
+              </>
+            )
+          }
           control={
-            <div className="flex items-center gap-1.5">
-              <StatusBadge tone={probe ? PROBE_TONE[probe.verdict] : 'muted'}>
-                {probe ? PROBE_TEXT[probe.verdict] : '未检测'}
-              </StatusBadge>
-              {(probe?.verdict === SystemAudioVerdict.SilentWhilePlaying ||
-                probe?.verdict === SystemAudioVerdict.TapRejected) && (
-                <Button size="sm" onClick={() => void open('systemAudio')}>
-                  打开设置
+            isWindows ? (
+              <StatusBadge tone="muted">不可用</StatusBadge>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <StatusBadge tone={probe ? PROBE_TONE[probe.verdict] : 'muted'}>
+                  {probe ? PROBE_TEXT[probe.verdict] : '未检测'}
+                </StatusBadge>
+                {(probe?.verdict === SystemAudioVerdict.SilentWhilePlaying ||
+                  probe?.verdict === SystemAudioVerdict.TapRejected) && (
+                  <Button size="sm" onClick={() => void open('systemAudio')}>
+                    打开设置
+                  </Button>
+                )}
+                <Button size="sm" pending={probing} disabled={capturing || probing} onClick={() => void runProbe()}>
+                  检测
                 </Button>
-              )}
-              <Button size="sm" pending={probing} disabled={capturing || probing} onClick={() => void runProbe()}>
-                检测
-              </Button>
-            </div>
+              </div>
+            )
           }
         />
       </SettingsGroup>
@@ -175,6 +203,13 @@ function micDescription(mic: MicPermission, promptable: boolean): string {
   }
   if (mic === MicPermission.NotDetermined) return '未授权时，macOS 不会给出设备列表。'
   return '无法读取麦克风授权状态。'
+}
+
+function formatDbfs(value: number): string {
+  if (value <= 0) return '静音'
+  const db = 20 * Math.log10(value)
+  if (db <= -60) return '< -60 dBFS'
+  return `${Math.round(db)} dBFS`
 }
 
 function probeDescription(probe: SystemAudioProbe | null): string {
