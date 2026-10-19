@@ -33,7 +33,7 @@ cd src-tauri && cargo test
 - TS 格式由 Biome 决定：单引号、无分号、2 空格、120 列。`src/shared/types.ts` 由 typeshare 生成，不要手改。
 - Rust 只格式化本次改动的文件；全仓 `cargo fmt` 会带出无关改动。
 - macOS 麦克风 / 系统声音权限只能在打包后的 `.app` 里验证；dev 裸二进制缺 Info.plist，会表现为「假性不工作」。
-- Windows / Linux 目前只验证过编译，运行路径未在真机验证。
+- macOS 14.2+ / Windows 10+ / Ubuntu 24 均已实测可用。
 
 ## 可维护操作
 
