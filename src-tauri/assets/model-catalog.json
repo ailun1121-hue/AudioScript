@@ -39,7 +39,7 @@
       "title": "高精度语音识别",
       "description": "更大的双语流式模型，识别更准，占用更多内存与 CPU。",
       "bundled": false,
-      "downloadable": false,
+      "downloadable": true,
       "install": {
         "dir": "asr-high",
         "archiveRoot": "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
@@ -55,12 +55,12 @@
       "archive": {
         "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2",
         "format": "tar-bz2",
-        "sha256": "",
+        "sha256": "27ffbd9ee24ad186d99acc2f6354d7992b27bcab490812510665fa8f9389c5f8",
         "sizeBytes": 511274346,
         "maxExtractedBytes": 314572800
       },
       "pruneProfile": "sherpa-asr-mixed-int8",
-      "sizes": { "installedBytes": 209715200 },
+      "sizes": { "installedBytes": 199301041 },
       "licenses": [
         {
           "component": "sherpa-onnx streaming zipformer bilingual zh-en (2023-02-20)",

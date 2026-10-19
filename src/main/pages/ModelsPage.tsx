@@ -17,6 +17,7 @@ import {
 } from '@/shared/ipc'
 import { Alert } from '@/ui/Alert'
 import { Button } from '@/ui/Button'
+import { Icon } from '@/ui/Icon'
 import { Page } from '@/ui/Page'
 import { ProgressBar } from '@/ui/ProgressBar'
 import { SettingsGroup, SettingsRow } from '@/ui/Settings'
@@ -32,6 +33,7 @@ export function ModelsPage() {
   const capturing = status === 'capturing'
 
   const [list, setList] = useState<ModelsList | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [job, setJob] = useState<ModelJobStatus | null>(null)
   const [failure, setFailure] = useState<Failure | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -42,10 +44,16 @@ export function ModelsPage() {
       const next = await modelsList()
       setList(next)
       setJob(next.job ?? null)
+      setLoadError(null)
     } catch (e) {
-      setError(formatCmdError(e))
+      setLoadError(formatCmdError(e))
     }
-  }, [setError])
+  }, [])
+
+  function retry() {
+    setLoadError(null)
+    void refresh()
+  }
 
   useEffect(() => {
     let disposed = false
@@ -135,7 +143,16 @@ export function ModelsPage() {
   if (!list) {
     return (
       <Page title="模型">
-        <p className="text-[var(--color-ink-2)] text-sm">读取中…</p>
+        {loadError ? (
+          <Alert tone="error" title="读取模型列表失败">
+            <p className="font-mono">{loadError}</p>
+            <Button size="sm" className="mt-2" onClick={retry}>
+              重试
+            </Button>
+          </Alert>
+        ) : (
+          <p className="text-[var(--color-ink-2)] text-sm">读取中…</p>
+        )}
       </Page>
     )
   }
@@ -144,6 +161,15 @@ export function ModelsPage() {
 
   return (
     <Page title="模型">
+      {loadError && (
+        <Alert tone="error" title="刷新模型列表失败">
+          <p className="font-mono">{loadError}</p>
+          <Button size="sm" className="mt-2" onClick={retry}>
+            重试
+          </Button>
+        </Alert>
+      )}
+
       {capturing && (
         <Alert tone="info" title="正在转写">
           模型切换将在下次开始转写时生效；停止转写后才能删除模型。
@@ -247,7 +273,16 @@ function ModelRow({
       title={
         <span className="flex flex-wrap items-center gap-1.5">
           {model.title}
-          {model.selected && <StatusBadge tone="ok">使用中</StatusBadge>}
+          {model.selected && (
+            <span
+              role="img"
+              aria-label="使用中"
+              title="使用中"
+              className="inline-flex items-center text-[var(--color-accent)]"
+            >
+              <Icon name="check" size={15} strokeWidth={2.25} />
+            </span>
+          )}
           {model.bundled && <StatusBadge tone="muted">内置</StatusBadge>}
           {!model.selected && statusBadge(model)}
         </span>

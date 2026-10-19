@@ -100,18 +100,10 @@ fn tray_icon(app: &AppHandle) -> tauri::Result<tauri::image::Image<'static>> {
 fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
     match event.id().as_ref() {
         id::SHOW_MAIN => lifecycle::show_main(app),
-        id::STOP_SESSION => {
-            let app = app.clone();
-            if let Err(e) = std::thread::Builder::new()
-                .name("tray-stop".into())
-                .spawn(move || match crate::session::stop(&app) {
-                    Ok(()) => tracing::info!("托盘：已请求停止转写"),
-                    Err(e) => tracing::error!("托盘停止转写失败：{e}"),
-                })
-            {
-                tracing::error!("无法启动托盘停止线程：{e}");
-            }
-        }
+        id::STOP_SESSION => match crate::session::stop(app) {
+            Ok(()) => tracing::info!("托盘：已请求停止转写"),
+            Err(e) => tracing::error!("托盘停止转写失败：{e}"),
+        },
         id::TOGGLE_OVERLAY => {
             if let Err(e) = overlay::toggle(app) {
                 tracing::error!("{e}");

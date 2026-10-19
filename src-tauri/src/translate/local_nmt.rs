@@ -145,7 +145,7 @@ impl Translator for LocalNmt {
         Self::check_model_dir(&dir, self.tier)?;
 
         let config = ct2rs::Config {
-            num_threads_per_replica: 2,
+            num_threads_per_replica: 1,
             ..Default::default()
         };
 
@@ -154,6 +154,15 @@ impl Translator for LocalNmt {
             .map_err(|e| TranslateError::ModelLoad(format!("{}：{e}", dir.display())))?;
 
         self.engine = Some(engine);
+
+        let warm = match self.direction {
+            Direction::EnZh => "hello",
+            Direction::ZhEn => "你好",
+        };
+        if let Err(e) = self.translate(warm) {
+            tracing::warn!("翻译引擎预热返回异常（忽略）：{e}");
+        }
+
         Ok(())
     }
 

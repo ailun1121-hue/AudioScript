@@ -102,6 +102,19 @@ pub fn run() {
 
             handle.manage(log::LogDir(log::init(&handle)));
 
+            if let Err(e) = session::init_emitter(&handle) {
+                tracing::error!("{e}");
+            }
+            if let Err(e) = session::init_teardown_executor() {
+                tracing::error!("{e}");
+            }
+            if let Err(e) = session::init_translate_worker() {
+                tracing::error!("{e}");
+            }
+            if let Err(e) = commands::init_executors() {
+                tracing::error!("{e}");
+            }
+
             paths::log_startup_selfcheck(&handle);
             spawn_main_thread_watchdog(&handle);
 

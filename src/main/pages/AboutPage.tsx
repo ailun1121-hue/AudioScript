@@ -53,6 +53,7 @@ export function AboutPage() {
   const { info, setError } = useStore()
   const [update, setUpdate] = useState<UpdateState>({ kind: 'idle' })
   const [models, setModels] = useState<ModelsList | null>(null)
+  const [modelsFailed, setModelsFailed] = useState(false)
   const [licensesOpen, setLicensesOpen] = useState(false)
 
   useEffect(() => {
@@ -61,7 +62,9 @@ export function AboutPage() {
       .then((m) => {
         if (!disposed) setModels(m)
       })
-      .catch(() => {})
+      .catch(() => {
+        if (!disposed) setModelsFailed(true)
+      })
     return () => {
       disposed = true
     }
@@ -228,7 +231,7 @@ export function AboutPage() {
               )),
             )
           ) : (
-            <SettingsRow title="读取中…" />
+            <SettingsRow title={modelsFailed ? '模型许可读取失败，请到「模型」页重试' : '读取中…'} />
           ))}
       </SettingsGroup>
     </Page>

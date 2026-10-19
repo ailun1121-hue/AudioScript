@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createWriteStream } from 'node:fs'
-import { mkdir, readdir, rm, stat, unlink } from 'node:fs/promises'
+import { mkdir, readdir, rename, rm, stat, unlink } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -27,6 +27,7 @@ const URL = `https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/
 const MODELS_DIR = join(ROOT, 'src-tauri', 'assets', 'models')
 const CACHE_DIR = join(ROOT, '.cache')
 const TARGET_DIR = high ? join(CACHE_DIR, 'asr-high') : join(MODELS_DIR, MODEL)
+const EXTRACTED_DIR = join(dirname(TARGET_DIR), MODEL)
 const ARCHIVE = join(CACHE_DIR, `${MODEL}.tar.bz2`)
 
 async function missingFiles() {
@@ -180,6 +181,10 @@ async function main() {
   }
 
   extract()
+  if (EXTRACTED_DIR !== TARGET_DIR) {
+    await rm(TARGET_DIR, { recursive: true, force: true })
+    await rename(EXTRACTED_DIR, TARGET_DIR)
+  }
   await prune()
 
   const missing = await missingFiles()

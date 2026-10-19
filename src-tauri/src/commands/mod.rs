@@ -80,18 +80,82 @@ where
     }
 }
 
+type CmdTask = Box<dyn FnOnce() + Send>;
+
+struct CmdExecutors {
+    quick: std::sync::mpsc::Sender<CmdTask>,
+    session: std::sync::mpsc::Sender<CmdTask>,
+}
+
+static CMD_EXECUTORS: std::sync::OnceLock<CmdExecutors> = std::sync::OnceLock::new();
+
+fn spawn_cmd_lane(name: &str) -> Result<std::sync::mpsc::Sender<CmdTask>, String> {
+    let (tx, rx) = std::sync::mpsc::channel::<CmdTask>();
+    std::thread::Builder::new()
+        .name(name.into())
+        .spawn(move || {
+            while let Ok(task) = rx.recv() {
+                task();
+            }
+        })
+        .map_err(|e| format!("启动 {name} 失败：{e}"))?;
+    Ok(tx)
+}
+
+pub fn init_executors() -> Result<(), String> {
+    let quick = spawn_cmd_lane("cmd-quick")?;
+    let session = spawn_cmd_lane("cmd-session")?;
+    let _ = CMD_EXECUTORS.set(CmdExecutors { quick, session });
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum Lane {
+    Quick,
+    Session,
+}
+
+async fn run_lane<F, R>(lane: Lane, task: F, timeout: std::time::Duration) -> Result<R, CmdError>
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    let Some(executors) = CMD_EXECUTORS.get() else {
+        return run_blocking(task, timeout).await;
+    };
+
+    let sender = match lane {
+        Lane::Quick => &executors.quick,
+        Lane::Session => &executors.session,
+    };
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    sender
+        .send(Box::new(move || {
+            let _ = tx.send(task());
+        }))
+        .map_err(|_| CmdError::Failed("命令执行线程已退出".into()))?;
+
+    match tokio::time::timeout(timeout, rx).await {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(_)) => Err(CmdError::Failed("后台任务异常退出".into())),
+        Err(_) => Err(CmdError::Failed("后台任务超时，请重试".into())),
+    }
+}
+
 pub async fn route_async(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdError> {
-    let timeout = match name {
-        "session_start" => Some(std::time::Duration::from_secs(60)),
-        "permission_probe_system_audio" => Some(std::time::Duration::from_secs(30)),
-        "permission_request_mic" => Some(std::time::Duration::from_secs(40)),
-        "model_remove" => Some(std::time::Duration::from_secs(60)),
+    let plan = match name {
+        "session_start" => Some((Lane::Session, std::time::Duration::from_secs(60))),
+        "permission_probe_system_audio" => Some((Lane::Quick, std::time::Duration::from_secs(30))),
+        "permission_request_mic" => Some((Lane::Quick, std::time::Duration::from_secs(40))),
+        "models_list" => Some((Lane::Quick, std::time::Duration::from_secs(10))),
+        "model_remove" => Some((Lane::Quick, std::time::Duration::from_secs(60))),
         _ => None,
     };
 
-    if let Some(timeout) = timeout {
+    if let Some((lane, timeout)) = plan {
         let (app, name, args) = (app.clone(), name.to_string(), args.clone());
-        return run_blocking(move || route(&app, &name, &args), timeout).await?;
+        return run_lane(lane, move || route(&app, &name, &args), timeout).await?;
     }
 
     route(app, name, args)

@@ -34,6 +34,7 @@ import {
   Theme,
   TranslateEngine,
 } from '@/shared/ipc'
+import { withTimeout } from '@/shared/timeout'
 import { OverlayMode, TaskStatus } from '@/shared/types'
 
 export type EndpointConfig = Preferences['endpoint']
@@ -94,22 +95,6 @@ interface Store {
 const STOP_TIMEOUT_MS = 8_000
 
 const START_TIMEOUT_MS = 60_000
-
-function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(message), ms)
-    promise.then(
-      (value) => {
-        window.clearTimeout(timer)
-        resolve(value)
-      },
-      (error) => {
-        window.clearTimeout(timer)
-        reject(error)
-      },
-    )
-  })
-}
 
 const Ctx = createContext<Store | null>(null)
 

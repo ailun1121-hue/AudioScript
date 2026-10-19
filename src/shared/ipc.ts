@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { withTimeout } from './timeout'
 import type {
   AudioStatus,
   EndpointConfig,
@@ -131,8 +132,10 @@ export function configDefaults(): Promise<ConfigDefaults> {
   return call<ConfigDefaults>('config_defaults')
 }
 
+const MODELS_TIMEOUT_MS = 10_000
+
 export function modelsList(): Promise<ModelsList> {
-  return call<ModelsList>('models_list')
+  return withTimeout(call<ModelsList>('models_list'), MODELS_TIMEOUT_MS, '读取模型列表超时，请重试')
 }
 
 export function modelDownload(modelId: string): Promise<{ jobId: string }> {
