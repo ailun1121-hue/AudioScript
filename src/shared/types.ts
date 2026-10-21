@@ -199,6 +199,7 @@ export interface Preferences {
 	onboardingDone: boolean;
 	asrModelTier: AsrModelTier;
 	mtModelTier: MtModelTier;
+	analyticsEnabled: boolean;
 }
 
 export interface PrefsPatch {
@@ -212,6 +213,7 @@ export interface PrefsPatch {
 	onboardingDone?: boolean;
 	asrModelTier?: AsrModelTier;
 	mtModelTier?: MtModelTier;
+	analyticsEnabled?: boolean;
 }
 
 export interface TranslateConfig {

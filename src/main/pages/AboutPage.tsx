@@ -155,6 +155,11 @@ export function AboutPage() {
             </Mono>
           }
         />
+        <SettingsRow
+          icon="shield"
+          title="使用统计"
+          description="通过 Aptabase 发送匿名功能使用数据，不含转写内容、设备名称与文件路径。"
+        />
       </SettingsGroup>
 
       <SettingsGroup title="支持开发">

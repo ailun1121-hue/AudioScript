@@ -408,6 +408,7 @@ pub struct Preferences {
     pub onboarding_done: bool,
     pub asr_model_tier: AsrModelTier,
     pub mt_model_tier: MtModelTier,
+    pub analytics_enabled: bool,
 }
 
 impl Default for Preferences {
@@ -426,6 +427,7 @@ impl Default for Preferences {
             onboarding_done: false,
             asr_model_tier: AsrModelTier::default(),
             mt_model_tier: MtModelTier::default(),
+            analytics_enabled: true,
         }
     }
 }
@@ -444,6 +446,7 @@ pub struct PrefsPatch {
     pub onboarding_done: Option<bool>,
     pub asr_model_tier: Option<AsrModelTier>,
     pub mt_model_tier: Option<MtModelTier>,
+    pub analytics_enabled: Option<bool>,
 }
 
 impl PrefsPatch {
@@ -491,6 +494,9 @@ impl PrefsPatch {
         }
         if let Some(v) = self.mt_model_tier {
             p.mt_model_tier = v;
+        }
+        if let Some(v) = self.analytics_enabled {
+            p.analytics_enabled = v;
         }
     }
 }
@@ -922,6 +928,19 @@ mod tests {
         assert_eq!(p.audio_source, "mic", "给的字段要生效");
         assert_eq!(p.overlay.font_size, 40, "没给的字段必须原样保留");
         assert_eq!(p.source_lang, "zh", "没给的字段必须原样保留");
+    }
+
+    #[test]
+    fn analytics_defaults_on_and_patch_can_disable_it() {
+        assert!(Preferences::default().analytics_enabled);
+
+        let mut p = Preferences::default();
+        PrefsPatch {
+            analytics_enabled: Some(false),
+            ..Default::default()
+        }
+        .apply_to(&mut p);
+        assert!(!p.analytics_enabled);
     }
 
     #[test]

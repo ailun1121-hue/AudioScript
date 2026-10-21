@@ -593,3 +593,13 @@ Remote API 密钥 MUST 存入系统密钥链（macOS Keychain / Windows Credenti
 | 分发渠道 | GitHub Releases 自建 | 使 `macos-private-api` 的代价可接受 |
 | macOS | 14.2+ | Core Audio Process Tap 可用 |
 
+---
+
+## 12. 匿名使用统计
+
+统计默认开启，可在「通用 → 隐私 → 匿名使用统计」关闭；关闭后 Rust 与前端都 MUST NOT 再入队新事件。
+
+- 事件：`app_started` / `app_exited`、`session_started` / `session_stopped`、`model_download`、`overlay_toggled`、`setting_changed`、`onboarding_completed`。
+- 属性只允许枚举值与分档（音源、翻译引擎、源语言、模型档位、时长分档、结果状态）。
+- MUST NOT 包含转写文本、设备名称或 ID、文件路径、错误原文。
+- 传输由 `tauri-plugin-aptabase` 完成，插件自身不自动采集任何事件；上报在后台线程，MUST NOT 阻塞启动、转写或退出。

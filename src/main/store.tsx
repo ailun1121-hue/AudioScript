@@ -1,4 +1,5 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { setTrackingEnabled, track } from '@/shared/analytics'
 import {
   type AppInfo,
   AudioSourceKind,
@@ -65,6 +66,9 @@ interface Store {
   onboardingDone: boolean
   completeOnboarding: () => Promise<void>
 
+  analyticsEnabled: boolean
+  setAnalyticsEnabled: (v: boolean) => void
+
   permissions: PermissionSnapshot | null
   refreshPermission: () => Promise<void>
   permissionError: CmdPermissionError | null
@@ -128,6 +132,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [hotkeyProblems, setHotkeyProblems] = useState<HotkeyFailure[]>([])
 
   const [onboardingDone, setOnboardingDone] = useState(false)
+  const [analyticsEnabled, setAnalyticsEnabledState] = useState(false)
   const [permissions, setPermissions] = useState<PermissionSnapshot | null>(null)
   const [permissionError, setPermissionError] = useState<CmdPermissionError | null>(null)
 
@@ -179,6 +184,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setTheme(p.theme)
         setEndpoint(p.endpoint)
         setOnboardingDone(p.onboardingDone)
+        setAnalyticsEnabledState(p.analyticsEnabled)
+        setTrackingEnabled(p.analyticsEnabled)
         if (p.deviceId) setDevice(p.deviceId)
       })
       .catch(() => {})
@@ -239,10 +246,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setOnboardingDone(true)
     try {
       await prefsSet({ onboardingDone: true })
+      track('onboarding_completed')
     } catch (e) {
       setError(formatCmdError(e))
     }
   }, [])
+
+  const setAnalyticsEnabled = useCallback(
+    (next: boolean) => {
+      if (!next) track('setting_changed', { key: 'analytics', value: 'off' })
+      setAnalyticsEnabledState(next)
+      setTrackingEnabled(next)
+      void patchPrefs({ analyticsEnabled: next })
+      if (next) track('setting_changed', { key: 'analytics', value: 'on' })
+    },
+    [patchPrefs],
+  )
 
   const refreshDevices = useCallback(async () => {
     try {
@@ -335,6 +354,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     async (next: Theme) => {
       setTheme(next)
       await patchPrefs({ theme: next })
+      track('setting_changed', { key: 'theme', value: next })
     },
     [patchPrefs],
   )
@@ -344,6 +364,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setAudioSource(v)
       setDevice('')
       void patchPrefs({ audioSource: v, deviceId: '' })
+      track('setting_changed', { key: 'audio_source', value: v })
     },
     [patchPrefs],
   )
@@ -360,6 +381,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     (v: TranslateEngine) => {
       setTranslateEngine(v)
       void patchPrefs({ translateEngine: v })
+      track('setting_changed', { key: 'translate_engine', value: v })
     },
     [patchPrefs],
   )
@@ -368,6 +390,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     (v: string) => {
       setSourceLang(v)
       void patchPrefs({ sourceLang: v })
+      track('setting_changed', { key: 'source_lang', value: v })
     },
     [patchPrefs],
   )
@@ -401,6 +424,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       hotkeyProblems,
       onboardingDone,
       completeOnboarding,
+      analyticsEnabled,
+      setAnalyticsEnabled,
       permissions,
       refreshPermission,
       permissionError,
@@ -441,6 +466,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       hotkeyProblems,
       onboardingDone,
       completeOnboarding,
+      analyticsEnabled,
+      setAnalyticsEnabled,
       permissions,
       refreshPermission,
       permissionError,

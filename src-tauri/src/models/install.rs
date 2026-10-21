@@ -48,10 +48,13 @@ pub fn start_download(app: &AppHandle, model_id: &str) -> Result<String, ModelEr
     let app_for_thread = app.clone();
     let model_for_thread = model_id.to_owned();
     let job_for_thread = job_id.clone();
+    let kind_for_thread = entry.kind.as_str().to_owned();
+    let tier_for_thread = entry.tier.clone();
 
     let spawned = std::thread::Builder::new()
         .name("model-install".into())
         .spawn(move || {
+            let started = std::time::Instant::now();
             let outcome = catch_unwind(AssertUnwindSafe(|| {
                 run_install(
                     &app_for_thread,
@@ -65,6 +68,13 @@ pub fn start_download(app: &AppHandle, model_id: &str) -> Result<String, ModelEr
             app_for_thread
                 .state::<ModelState>()
                 .clear(&job_for_thread);
+
+            let result = match &outcome {
+                Ok(Ok(())) => "ok",
+                Ok(Err(ModelError::Cancelled)) => "cancelled",
+                Ok(Err(_)) => "failed",
+                Err(_) => "panicked",
+            };
 
             match outcome {
                 Ok(Ok(())) => set_phase(&app_for_thread, &status, ModelPhase::Done, None),
@@ -92,6 +102,18 @@ pub fn start_download(app: &AppHandle, model_id: &str) -> Result<String, ModelEr
                     )
                 }
             }
+
+            crate::telemetry::track(
+                &app_for_thread,
+                "model_download",
+                Some(serde_json::json!({
+                    "model": model_for_thread,
+                    "kind": kind_for_thread,
+                    "tier": tier_for_thread,
+                    "result": result,
+                    "duration_bucket": crate::telemetry::duration_bucket(started.elapsed().as_millis() as u64),
+                })),
+            );
         });
 
     if let Err(e) = spawned {

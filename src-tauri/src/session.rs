@@ -687,6 +687,18 @@ pub fn start(
     });
     state.set_status(TaskStatus::Capturing);
 
+    crate::telemetry::track(
+        app,
+        "session_started",
+        Some(serde_json::json!({
+            "audio_source": source.as_str(),
+            "translate_engine": cfg.translate.engine.as_str(),
+            "source_lang": cfg.translate.source_lang,
+            "asr_model_tier": prefs.asr_model_tier.as_str(),
+            "custom_asr_model": if cfg.asr.model_dir.as_deref().is_some_and(|s| !s.trim().is_empty()) { 1 } else { 0 },
+        })),
+    );
+
     Ok(())
 }
 
@@ -705,6 +717,24 @@ pub fn stop(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     };
     tracing::info!("停止：已摘除运行会话");
+
+    let audio_ms = {
+        let clock = state
+            .audio_started_at
+            .lock()
+            .expect("audio start mutex poisoned");
+        (*clock)
+            .map(|t| t.elapsed().as_millis() as u64)
+            .unwrap_or(0)
+    };
+    crate::telemetry::track(
+        app,
+        "session_stopped",
+        Some(serde_json::json!({
+            "duration_bucket": crate::telemetry::duration_bucket(audio_ms),
+            "segments": state.snapshot().len() as u64,
+        })),
+    );
 
     session.capture.request_stop();
     session.queue.close();

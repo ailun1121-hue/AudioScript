@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/main/store'
+import { track } from '@/shared/analytics'
 import { autostartGet, autostartSet, formatCmdError, logsExport, prefsReset, revealPath, Theme } from '@/shared/ipc'
 import { Alert } from '@/ui/Alert'
 import { Button } from '@/ui/Button'
@@ -15,7 +16,7 @@ const THEME_OPTIONS = [
 ]
 
 export function GeneralPage() {
-  const { theme, changeTheme, setError } = useStore()
+  const { theme, changeTheme, prefsReady, analyticsEnabled, setAnalyticsEnabled, setError } = useStore()
 
   const [autostart, setAutostart] = useState<boolean | null>(null)
   const [confirmingReset, setConfirmingReset] = useState(false)
@@ -32,6 +33,7 @@ export function GeneralPage() {
     try {
       const s = await autostartSet(next)
       setAutostart(s.enabled)
+      track('setting_changed', { key: 'autostart', value: s.enabled ? 'on' : 'off' })
     } catch (e) {
       setError(formatCmdError(e))
     }
@@ -89,6 +91,22 @@ export function GeneralPage() {
               checked={autostart === true}
               disabled={autostart === null}
               onChange={(v) => void toggleAutostart(v)}
+            />
+          }
+        />
+      </SettingsGroup>
+
+      <SettingsGroup title="隐私" footer="统计仅包含事件名与少量枚举属性，不含转写文本、设备名称或文件路径。">
+        <SettingsRow
+          icon="shield"
+          title="匿名使用统计"
+          description="通过 Aptabase 发送功能使用情况，帮助改进 AudioScript。"
+          control={
+            <Switch
+              label="匿名使用统计"
+              checked={analyticsEnabled}
+              disabled={!prefsReady}
+              onChange={setAnalyticsEnabled}
             />
           }
         />

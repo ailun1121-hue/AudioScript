@@ -11,6 +11,7 @@ pub mod permission;
 pub mod prefs;
 pub mod session;
 pub mod shortcut;
+pub mod telemetry;
 pub mod transcript;
 pub mod translate;
 pub mod tray;
@@ -68,6 +69,8 @@ pub fn run() {
         tracing::info!("检测到第二次启动，唤回已有实例");
         lifecycle::show_main(app);
     }));
+
+    builder = builder.plugin(tauri_plugin_aptabase::Builder::new(telemetry::APP_KEY).build());
 
     #[cfg(target_os = "macos")]
     {
@@ -129,6 +132,17 @@ pub fn run() {
             }
 
             let saved_prefs = prefs::load(&handle);
+            telemetry::track(
+                &handle,
+                "app_started",
+                Some(serde_json::json!({
+                    "asr_model_tier": saved_prefs.asr_model_tier.as_str(),
+                    "mt_model_tier": saved_prefs.mt_model_tier.as_str(),
+                    "translate_engine": saved_prefs.translate_engine.as_str(),
+                    "source_lang": saved_prefs.source_lang,
+                    "onboarding_done": if saved_prefs.onboarding_done { 1 } else { 0 },
+                })),
+            );
             if let Err(e) = overlay::init(&handle, saved_prefs.overlay, saved_prefs.overlay_geometry) {
                 tracing::error!("悬浮窗初始化失败：{e}");
             }
@@ -282,11 +296,16 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app, event| {
-            if let tauri::RunEvent::ExitRequested { api, .. } = &event {
+        .run(|app, event| match &event {
+            tauri::RunEvent::ExitRequested { api, .. } => {
                 if lifecycle::on_run_event(app, &event) {
                     api.prevent_exit();
                 }
             }
+            tauri::RunEvent::Exit => {
+                telemetry::track(app, "app_exited", None);
+                telemetry::flush(app);
+            }
+            _ => {}
         });
 }
