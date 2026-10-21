@@ -159,6 +159,7 @@ export function ModelsPage() {
   }
 
   const connected = list.userRoot !== undefined
+  const brokenSelected = [...list.asr, ...list.mt].find((m) => m.selected && !m.complete)
 
   return (
     <Page title="模型">
@@ -168,6 +169,14 @@ export function ModelsPage() {
           <Button size="sm" className="mt-2" onClick={retry}>
             重试
           </Button>
+        </Alert>
+      )}
+
+      {brokenSelected && (
+        <Alert tone="error" title={`当前使用的「${brokenSelected.title}」文件缺失`}>
+          {brokenSelected.bundled
+            ? '内置模型文件缺失，请重新安装应用。'
+            : '请重新下载该模型，或切换到其他已安装的模型。'}
         </Alert>
       )}
 
@@ -275,7 +284,8 @@ function ModelRow({
         <span>
           约 {formatBytes(model.installedBytes)}
           {licenses.length > 0 && ` · ${licenses.join(' / ')}${needsAttribution ? '（需署名）' : ''}`}
-          {model.installed && !model.complete && ' · 文件不完整，请重新下载'}
+          {!model.bundled && model.installed && !model.complete && ' · 文件不完整，请重新下载'}
+          {model.bundled && !model.complete && ' · 内置文件缺失，请重新安装应用'}
           {!model.bundled && !model.downloadable && ' · 模型包尚未发布'}
         </span>
       }
@@ -336,7 +346,8 @@ function ModelRow({
 }
 
 function statusBadge(model: ModelStatus) {
-  if (model.complete) return <StatusBadge tone="ok">已下载</StatusBadge>
+  if (model.complete) return <StatusBadge tone="ok">{model.bundled ? '内置' : '已下载'}</StatusBadge>
+  if (model.bundled) return <StatusBadge tone="danger">内置文件缺失</StatusBadge>
   if (model.installed) return <StatusBadge tone="danger">文件不完整</StatusBadge>
   if (model.downloadable) return <StatusBadge tone="warn">未安装</StatusBadge>
   return <StatusBadge tone="muted">资源尚未发布</StatusBadge>

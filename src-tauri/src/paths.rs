@@ -158,15 +158,24 @@ pub fn locate_asr(
     tier: AsrModelTier,
 ) -> Result<ResolvedModelDir, String> {
     let entry = catalog::asr_entry(tier);
-    locate(
-        roots,
-        matches!(tier, AsrModelTier::Builtin),
-        entry.installed_dir(),
-        format!("语音识别模型「{}」", entry.title),
+    let bundled = matches!(tier, AsrModelTier::Builtin);
+    let remedy = if bundled {
+        format!(
+            "→ 内置模型文件缺失：请重新安装应用；开发环境运行 `pnpm install`（或 `pnpm fetch:model`）后重启。\n\
+             （若设置了 {ENV_MODEL_DIR}，它也会被优先查找。）"
+        )
+    } else {
         format!(
             "→ 打开「模型」页下载该模型，或切换回内置模型。\n\
              （若设置了 {ENV_MODEL_DIR}，它也会被优先查找。）"
-        ),
+        )
+    };
+    locate(
+        roots,
+        bundled,
+        entry.installed_dir(),
+        format!("语音识别模型「{}」", entry.title),
+        remedy,
     )
 }
 
@@ -175,15 +184,24 @@ pub fn locate_mt_root(
     tier: MtModelTier,
 ) -> Result<ResolvedModelDir, String> {
     let entry = catalog::mt_entry(tier);
-    locate(
-        roots,
-        matches!(tier, MtModelTier::Base),
-        entry.installed_dir(),
-        format!("翻译模型「{}」", entry.title),
+    let bundled = matches!(tier, MtModelTier::Base);
+    let remedy = if bundled {
+        format!(
+            "→ 内置模型文件缺失：请重新安装应用；开发环境运行 `pnpm fetch:mt` 后重启。\n\
+             （若设置了 {ENV_MODEL_DIR}，它也会被优先查找。）"
+        )
+    } else {
         format!(
             "→ 打开「模型」页下载该模型，或切换回基础模型。\n\
              （若设置了 {ENV_MODEL_DIR}，它也会被优先查找。）"
-        ),
+        )
+    };
+    locate(
+        roots,
+        bundled,
+        entry.installed_dir(),
+        format!("翻译模型「{}」", entry.title),
+        remedy,
     )
 }
 
