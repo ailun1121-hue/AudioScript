@@ -472,6 +472,7 @@ fn app_info() -> Value {
 }
 
 const REPO_URL: &str = "https://github.com/niyongsheng/AudioScript";
+const SITE_URL: &str = "https://niyongsheng.github.io/AudioScript/";
 
 const SPONSOR_URL: &str = "https://ifdian.net/a/nico2026";
 
@@ -512,8 +513,9 @@ fn export_transcript(
 }
 
 fn is_allowed_link(url: &str) -> bool {
-    const PREFIXES: [&str; 6] = [
+    const PREFIXES: [&str; 7] = [
         REPO_URL,
+        SITE_URL,
         "https://github.com/k2-fsa/sherpa-onnx",
         "https://github.com/Helsinki-NLP/Opus-MT",
         "https://huggingface.co/Helsinki-NLP/",
@@ -733,6 +735,8 @@ mod tests {
             "https://github.com/niyongsheng/AudioScript/releases/tag/v0.1.5"
         ));
         assert!(is_allowed_link("https://github.com/niyongsheng/AudioScript"));
+        assert!(is_allowed_link(SITE_URL));
+        assert!(!is_allowed_link("https://niyongsheng.github.io.evil/AudioScript/"));
         assert!(is_allowed_link(
             "https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models"
         ));

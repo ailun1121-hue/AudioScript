@@ -9,6 +9,8 @@ import { SettingsGroup, SettingsRow } from '@/ui/Settings'
 
 const REPO_URL = 'https://github.com/niyongsheng/AudioScript'
 
+const SITE_URL = 'https://niyongsheng.github.io/AudioScript/'
+
 const LATEST_RELEASE_URL = 'https://api.github.com/repos/niyongsheng/AudioScript/releases/latest'
 
 const AFDIAN_BADGE = 'https://img.shields.io/badge/爱发电-Afdian-946ce6?style=for-the-badge&logo=github&logoColor=white'
@@ -110,6 +112,14 @@ export function AboutPage() {
     }
   }
 
+  async function openSite() {
+    try {
+      await openUrl(SITE_URL)
+    } catch (e) {
+      setError(formatCmdError(e))
+    }
+  }
+
   async function openSponsorPage() {
     try {
       await openSponsor()
@@ -156,9 +166,10 @@ export function AboutPage() {
           }
         />
         <SettingsRow
-          icon="shield"
-          title="使用统计"
-          description="通过 Aptabase 发送匿名功能使用数据，不含转写内容、设备名称与文件路径。"
+          icon="external"
+          title="官网"
+          onClick={() => void openSite()}
+          control={<Icon name="chevron" size={16} className="mt-0.5 text-[var(--color-ink-2)]" />}
         />
       </SettingsGroup>
 
