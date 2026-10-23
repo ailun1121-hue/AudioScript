@@ -4,7 +4,7 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 use crate::config::OverlayMode;
-use crate::{overlay, prefs, tray};
+use crate::{overlay, prefs};
 
 pub struct Binding {
     pub id: &'static str,
@@ -74,10 +74,7 @@ pub fn bindings() -> Vec<Binding> {
                     OverlayMode::Edit => OverlayMode::Locked,
                 };
                 match overlay::set_mode(app, next) {
-                    Ok(m) => {
-                        tray::sync_mode(app, m);
-                        tracing::info!(mode = m.as_str(), "热键切换悬浮窗模式");
-                    }
+                    Ok(m) => tracing::info!(mode = m.as_str(), "热键切换悬浮窗模式"),
                     Err(e) => tracing::error!("{e}"),
                 }
             },

@@ -217,6 +217,7 @@ fn set_enable(app: &AppHandle, enable: bool) {
     if let Err(e) = crate::prefs::update(app, |p| p.overlay.enable = enable) {
         tracing::error!("悬浮窗可见性保存失败：{e}（重启后会回到上次落盘的状态）");
     }
+    crate::tray::sync_visibility(app, enable);
     broadcast(app, &state);
 }
 
@@ -254,6 +255,7 @@ pub fn set_mode(app: &AppHandle, mode: OverlayMode) -> Result<OverlayMode, Strin
     if let Err(e) = crate::prefs::update(app, |p| p.overlay.mode = mode) {
         tracing::error!("悬浮窗交互模式保存失败：{e}（重启后会回到上次落盘的模式）");
     }
+    crate::tray::sync_mode(app, mode);
     broadcast(app, &app.state::<OverlayState>());
     Ok(mode)
 }
@@ -279,6 +281,7 @@ pub fn set_config(app: &AppHandle, cfg: OverlayConfig) -> Result<OverlayConfig, 
     }
 
     state.replace(cfg.clone());
+    crate::tray::sync_mode(app, cfg.mode);
     if previous.font_size != cfg.font_size || previous.max_lines != cfg.max_lines {
         fit_height_to_lines(app, &cfg);
     }

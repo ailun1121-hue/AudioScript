@@ -1,19 +1,20 @@
 use std::sync::Mutex;
 
 use tauri::{
-    menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem},
+    menu::{CheckMenuItemBuilder, MenuBuilder, MenuItem, MenuItemBuilder, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Manager,
 };
 
 use crate::config::OverlayMode;
+use crate::session::{SessionState, TaskStatus};
 use crate::{lifecycle, overlay};
 
 pub const TRAY_ID: &str = "audioscript-tray";
 
 mod id {
     pub const SHOW_MAIN: &str = "show_main";
-    pub const STOP_SESSION: &str = "stop_session";
+    pub const TOGGLE_SESSION: &str = "toggle_session";
     pub const TOGGLE_OVERLAY: &str = "toggle_overlay";
     pub const OVERLAY_LOCKED: &str = "overlay_locked";
     pub const QUIT: &str = "quit";
@@ -23,13 +24,22 @@ pub struct TrayState {
     #[allow(dead_code)]
     icon: Mutex<tauri::tray::TrayIcon<tauri::Wry>>,
     locked_item: tauri::menu::CheckMenuItem<tauri::Wry>,
+    session_item: MenuItem<tauri::Wry>,
+    visibility_item: MenuItem<tauri::Wry>,
 }
 
 pub fn init(app: &AppHandle) -> tauri::Result<()> {
     let show_main = MenuItemBuilder::with_id(id::SHOW_MAIN, "显示主窗口").build(app)?;
-    let stop_session = MenuItemBuilder::with_id(id::STOP_SESSION, "停止转写").build(app)?;
-    let toggle_overlay =
-        MenuItemBuilder::with_id(id::TOGGLE_OVERLAY, "显示 / 隐藏悬浮窗").build(app)?;
+
+    let capturing = app.state::<SessionState>().status() == TaskStatus::Capturing;
+    let session_item =
+        MenuItemBuilder::with_id(id::TOGGLE_SESSION, session_text(capturing)).build(app)?;
+
+    let visibility_item = MenuItemBuilder::with_id(
+        id::TOGGLE_OVERLAY,
+        visibility_text(overlay::is_visible(app)),
+    )
+    .build(app)?;
 
     let locked_item = CheckMenuItemBuilder::with_id(id::OVERLAY_LOCKED, "点击穿透（锁定）")
         .checked(app.state::<overlay::OverlayState>().mode_is_click_through())
@@ -42,9 +52,9 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     let menu = MenuBuilder::new(app)
         .items(&[
             &show_main,
-            &stop_session,
+            &session_item,
             &sep1,
-            &toggle_overlay,
+            &visibility_item,
             &locked_item,
             &sep2,
             &quit,
@@ -64,9 +74,27 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     app.manage(TrayState {
         icon: Mutex::new(icon),
         locked_item,
+        session_item,
+        visibility_item,
     });
 
     Ok(())
+}
+
+fn session_text(capturing: bool) -> &'static str {
+    if capturing {
+        "停止转写"
+    } else {
+        "开始转写"
+    }
+}
+
+fn visibility_text(visible: bool) -> &'static str {
+    if visible {
+        "隐藏悬浮窗"
+    } else {
+        "显示悬浮窗"
+    }
 }
 
 pub fn sync_mode(app: &AppHandle, mode: OverlayMode) {
@@ -75,6 +103,27 @@ pub fn sync_mode(app: &AppHandle, mode: OverlayMode) {
     };
     if let Err(e) = state.locked_item.set_checked(mode.is_click_through()) {
         tracing::error!("同步托盘勾选态失败：{e}");
+    }
+}
+
+pub fn sync_task_state(app: &AppHandle, status: TaskStatus) {
+    let Some(state) = app.try_state::<TrayState>() else {
+        return;
+    };
+    if let Err(e) = state
+        .session_item
+        .set_text(session_text(status == TaskStatus::Capturing))
+    {
+        tracing::error!("同步托盘转写项失败：{e}");
+    }
+}
+
+pub fn sync_visibility(app: &AppHandle, visible: bool) {
+    let Some(state) = app.try_state::<TrayState>() else {
+        return;
+    };
+    if let Err(e) = state.visibility_item.set_text(visibility_text(visible)) {
+        tracing::error!("同步托盘悬浮窗项失败：{e}");
     }
 }
 
@@ -97,13 +146,42 @@ fn tray_icon(app: &AppHandle) -> tauri::Result<tauri::image::Image<'static>> {
     ))
 }
 
+fn start_session(app: &AppHandle) {
+    let p = crate::prefs::load(app);
+    let args = serde_json::json!({
+        "device": p.device_id,
+        "source": p.audio_source,
+        "config": {
+            "translate": {
+                "engine": p.translate_engine,
+                "sourceLang": p.source_lang,
+                "zhScript": p.zh_script
+            }
+        }
+    });
+
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        match crate::commands::route_async(&app, "session_start", &args).await {
+            Ok(_) => tracing::info!("托盘：已开始转写"),
+            Err(e) => tracing::error!("托盘开始转写失败：{e}"),
+        }
+    });
+}
+
 fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
     match event.id().as_ref() {
         id::SHOW_MAIN => lifecycle::show_main(app),
-        id::STOP_SESSION => match crate::session::stop(app) {
-            Ok(()) => tracing::info!("托盘：已请求停止转写"),
-            Err(e) => tracing::error!("托盘停止转写失败：{e}"),
-        },
+        id::TOGGLE_SESSION => {
+            if app.state::<SessionState>().status() == TaskStatus::Capturing {
+                match crate::session::stop(app) {
+                    Ok(()) => tracing::info!("托盘：已请求停止转写"),
+                    Err(e) => tracing::error!("托盘停止转写失败：{e}"),
+                }
+            } else {
+                start_session(app);
+            }
+        }
         id::TOGGLE_OVERLAY => {
             if let Err(e) = overlay::toggle(app) {
                 tracing::error!("{e}");

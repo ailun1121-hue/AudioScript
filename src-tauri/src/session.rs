@@ -911,6 +911,7 @@ fn emit_segments(app: &AppHandle, segments: Vec<TranscriptSegment>) {
 }
 
 fn emit_status(app: &AppHandle, status: TaskStatus) {
+    crate::tray::sync_task_state(app, status);
     if let Err(e) = app.emit(EVENT_TASK_STATE, status) {
         tracing::debug!("广播任务状态失败（可能没有窗口在监听）：{e}");
     }
