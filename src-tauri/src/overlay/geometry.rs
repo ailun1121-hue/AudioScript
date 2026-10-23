@@ -18,10 +18,10 @@ const EDGE_MARGIN: u32 = 40;
 pub fn restore(app: &AppHandle, saved: Option<WindowGeometry>) {
     let Some(g) = saved else { return };
 
-    let Ok(frame) = Frame::get(app) else {
+    if Frame::get(app).is_err() {
         tracing::warn!("悬浮窗不存在，跳过几何恢复");
         return;
-    };
+    }
 
     let safe = clamp_to_visible(app, g);
     if safe != g {
@@ -32,7 +32,7 @@ pub fn restore(app: &AppHandle, saved: Option<WindowGeometry>) {
         );
     }
 
-    if let Err(e) = frame.set_geometry(&safe) {
+    if let Err(e) = super::set_geometry(app, &safe) {
         tracing::error!("{e}");
         return;
     }
@@ -58,10 +58,10 @@ pub fn start_watch(app: &AppHandle) {
     let spawned = std::thread::Builder::new()
         .name("overlay-geometry".into())
         .spawn(move || {
-            let mut last = Frame::get(&app).ok().and_then(|f| f.geometry());
+            let mut last = super::geometry(&app);
             loop {
                 std::thread::sleep(POLL);
-                let Some(now) = Frame::get(&app).ok().and_then(|f| f.geometry()) else {
+                let Some(now) = super::geometry(&app) else {
                     continue;
                 };
                 if Some(now) == last {
@@ -140,8 +140,8 @@ fn clamp_to_visible(app: &AppHandle, g: WindowGeometry) -> WindowGeometry {
         }
     };
 
-    let ms = monitor.size();
-    let size = fit_size(g.size, (ms.width, ms.height));
+    let (mx, my, mw, mh) = logical_monitor_rect(monitor);
+    let size = fit_size(g.size, (mw, mh));
 
     if host.is_some() {
         return WindowGeometry {
@@ -150,10 +150,9 @@ fn clamp_to_visible(app: &AppHandle, g: WindowGeometry) -> WindowGeometry {
         };
     }
 
-    let mp = monitor.position();
     let (w, h) = (size.width as i32, size.height as i32);
-    let x = mp.x + (ms.width as i32 - w) / 2;
-    let y = mp.y + ms.height as i32 - h - (ms.height as i32 / 6);
+    let x = mx + (mw as i32 - w) / 2;
+    let y = my + mh as i32 - h - (mh as i32 / 6);
 
     WindowGeometry {
         position: WindowPos { x, y },
@@ -161,12 +160,22 @@ fn clamp_to_visible(app: &AppHandle, g: WindowGeometry) -> WindowGeometry {
     }
 }
 
+pub(crate) fn logical_monitor_rect(m: &tauri::Monitor) -> (i32, i32, u32, u32) {
+    let scale = m.scale_factor();
+    let p = m.position();
+    let s = m.size();
+    (
+        (p.x as f64 / scale).round() as i32,
+        (p.y as f64 / scale).round() as i32,
+        (s.width as f64 / scale).round() as u32,
+        (s.height as f64 / scale).round() as u32,
+    )
+}
+
 fn is_grabbable(g: &WindowGeometry, m: &tauri::Monitor) -> bool {
-    let mp = m.position();
-    let ms = m.size();
     rect_is_grabbable(
         (g.position.x, g.position.y, g.size.width, g.size.height),
-        (mp.x, mp.y, ms.width, ms.height),
+        logical_monitor_rect(m),
     )
 }
 
@@ -210,6 +219,14 @@ mod tests {
     #[test]
     fn mostly_onscreen_edge_still_counts() {
         assert!(rect_is_grabbable(win(-200, 400), PRIMARY));
+    }
+
+    #[test]
+    fn window_below_a_rearranged_display_is_not_grabbable() {
+        let builtin = (-1680, 0, 1680, 1050);
+        let saved = (-1440, 1428, 1386, 648);
+        assert!(!rect_is_grabbable(saved, PRIMARY));
+        assert!(!rect_is_grabbable(saved, builtin));
     }
 
     #[test]

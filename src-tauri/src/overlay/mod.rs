@@ -124,37 +124,6 @@ impl Frame {
         }
     }
 
-    pub(crate) fn window(&self) -> Option<WebviewWindow> {
-        match self {
-            #[cfg(target_os = "macos")]
-            Self::Panel(p) => p.to_window(),
-            Self::Window(w) => Some((**w).clone()),
-        }
-    }
-
-    pub(crate) fn geometry(&self) -> Option<crate::config::WindowGeometry> {
-        use crate::config::{WindowGeometry, WindowPos, WindowSize};
-        let w = self.window()?;
-        let pos = w.outer_position().ok()?;
-        let size = w.outer_size().ok()?;
-        Some(WindowGeometry {
-            position: WindowPos { x: pos.x, y: pos.y },
-            size: WindowSize {
-                width: size.width,
-                height: size.height,
-            },
-        })
-    }
-
-    pub(crate) fn set_geometry(&self, g: &crate::config::WindowGeometry) -> Result<(), String> {
-        let w = self.window().ok_or("悬浮窗底层窗口不可用")?;
-        w.set_size(tauri::PhysicalSize::new(g.size.width, g.size.height))
-            .map_err(|e| format!("设置悬浮窗尺寸失败：{e}"))?;
-        w.set_position(tauri::PhysicalPosition::new(g.position.x, g.position.y))
-            .map_err(|e| format!("设置悬浮窗位置失败：{e}"))?;
-        Ok(())
-    }
-
     fn set_click_through(&self, on: bool) -> Result<(), String> {
         match self {
             #[cfg(target_os = "macos")]
@@ -175,6 +144,48 @@ impl Frame {
             Self::Window(w) => w.label(),
         }
     }
+}
+
+pub(crate) fn window(app: &AppHandle) -> Option<WebviewWindow> {
+    app.get_webview_window(LABEL)
+}
+
+pub(crate) fn geometry(app: &AppHandle) -> Option<crate::config::WindowGeometry> {
+    use crate::config::{WindowGeometry, WindowPos, WindowSize};
+
+    let w = window(app)?;
+    let pos = w.outer_position().ok()?;
+    let size = w.outer_size().ok()?;
+    let scale = w.scale_factor().ok()?;
+
+    Some(WindowGeometry {
+        position: WindowPos {
+            x: (pos.x as f64 / scale).round() as i32,
+            y: (pos.y as f64 / scale).round() as i32,
+        },
+        size: WindowSize {
+            width: (size.width as f64 / scale).round() as u32,
+            height: (size.height as f64 / scale).round() as u32,
+        },
+    })
+}
+
+pub(crate) fn set_geometry(
+    app: &AppHandle,
+    g: &crate::config::WindowGeometry,
+) -> Result<(), String> {
+    let w = window(app).ok_or("悬浮窗底层窗口不可用")?;
+    w.set_size(tauri::LogicalSize::new(
+        g.size.width as f64,
+        g.size.height as f64,
+    ))
+    .map_err(|e| format!("设置悬浮窗尺寸失败：{e}"))?;
+    w.set_position(tauri::LogicalPosition::new(
+        g.position.x as f64,
+        g.position.y as f64,
+    ))
+    .map_err(|e| format!("设置悬浮窗位置失败：{e}"))?;
+    Ok(())
 }
 
 pub fn toggle(app: &AppHandle) -> Result<bool, String> {
@@ -286,51 +297,47 @@ fn lines_height(font_size: u8, max_lines: u16) -> f64 {
 }
 
 fn fit_height_to_lines(app: &AppHandle, cfg: &OverlayConfig) {
-    let Ok(frame) = Frame::get(app) else {
+    let Some(win) = window(app) else {
         return;
     };
-    let Some(window) = frame.window() else {
-        return;
-    };
-
-    let (Ok(size), Ok(scale), Ok(pos)) = (
-        window.outer_size(),
-        window.scale_factor(),
-        window.outer_position(),
-    ) else {
+    let Some(g) = geometry(app) else {
         tracing::warn!("读取悬浮窗尺寸失败，跳过按行数调整高度");
         return;
     };
 
     let min_h = MIN_OVERLAY_HEIGHT as i32;
-    let want = ((lines_height(cfg.font_size, cfg.max_lines) * scale).round() as i32)
+    let want = (lines_height(cfg.font_size, cfg.max_lines).round() as i32)
         .clamp(min_h, MAX_OVERLAY_HEIGHT as i32);
 
-    let monitor = window.current_monitor().ok().flatten();
+    let monitor = win.current_monitor().ok().flatten();
     let (monitor_y, monitor_h) = monitor
         .as_ref()
-        .map(|m| (m.position().y, m.size().height as i32))
+        .map(|m| {
+            let (_, y, _, h) = geometry::logical_monitor_rect(m);
+            (y, h as i32)
+        })
         .unwrap_or((0, MAX_OVERLAY_HEIGHT as i32));
 
-    let grow_up = pos.y + size.height as i32 / 2 > monitor_y + monitor_h / 2;
+    let grow_up = g.position.y + g.size.height as i32 / 2 > monitor_y + monitor_h / 2;
     let available = if grow_up {
-        pos.y + size.height as i32 - monitor_y
+        g.position.y + g.size.height as i32 - monitor_y
     } else {
-        monitor_y + monitor_h - pos.y
+        monitor_y + monitor_h - g.position.y
     };
     let height = want.min(available.max(min_h)).max(min_h) as u32;
 
-    if height == size.height {
+    if height == g.size.height {
         return;
     }
 
     if grow_up {
-        let y = pos.y + size.height as i32 - height as i32;
-        if let Err(e) = window.set_position(tauri::PhysicalPosition::new(pos.x, y)) {
+        let y = g.position.y + g.size.height as i32 - height as i32;
+        if let Err(e) = win.set_position(tauri::LogicalPosition::new(g.position.x as f64, y as f64))
+        {
             tracing::warn!("调整悬浮窗位置失败：{e}");
         }
     }
-    match window.set_size(tauri::PhysicalSize::new(size.width, height)) {
+    match win.set_size(tauri::LogicalSize::new(g.size.width as f64, height as f64)) {
         Ok(()) => tracing::info!(
             font_size = cfg.font_size,
             max_lines = cfg.max_lines,
@@ -467,7 +474,7 @@ pub fn debug_state(app: &AppHandle) -> Result<serde_json::Value, String> {
         "clickThrough": app.state::<OverlayState>().mode_is_click_through(),
     });
 
-    if let Some(g) = frame.geometry() {
+    if let Some(g) = geometry(app) {
         out["geometry"] = serde_json::json!({
             "x": g.position.x,
             "y": g.position.y,

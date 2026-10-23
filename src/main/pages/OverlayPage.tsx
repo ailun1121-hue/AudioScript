@@ -155,9 +155,9 @@ export function OverlayPage() {
         />
         <SettingsRow
           icon="sparkle"
-          title="发光边框"
+          title="彩虹边框"
           control={
-            <Switch label="发光边框" checked={overlayCfg.glow} onChange={(v) => void updateOverlay({ glow: v })} />
+            <Switch label="彩虹边框" checked={overlayCfg.glow} onChange={(v) => void updateOverlay({ glow: v })} />
           }
         />
         <SettingsRow

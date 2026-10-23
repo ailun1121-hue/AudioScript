@@ -283,7 +283,7 @@ interface OverlayConfig {
   fontColor: string
   bgColor: string                // 支持 rgba 半透明
   maxLines: number
-  glow: boolean                  // 默认 true
+  glow: boolean                  // 默认 true：2px 彩虹渐变描边，无外发光
 }
 ```
 
