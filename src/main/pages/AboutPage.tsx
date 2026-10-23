@@ -105,13 +105,7 @@ export function AboutPage() {
                 <Mono>{percent == null ? '下载中' : `${percent}%`}</Mono>
               </div>
             ) : updatePhase === 'ready' ? (
-              <Button
-                size="sm"
-                variant="primary"
-                icon="refresh"
-                onClick={() => void restartApp()}
-                disabled={capturing}
-              >
+              <Button size="sm" variant="primary" icon="refresh" onClick={() => void restartApp()} disabled={capturing}>
                 重启
               </Button>
             ) : updateInfo?.available ? (
