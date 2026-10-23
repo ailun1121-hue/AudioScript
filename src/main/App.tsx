@@ -56,7 +56,7 @@ function Shell() {
       <section className="flex min-w-0 flex-1 flex-col bg-[var(--color-surface-0)]">
         <TitleBarSpacer />
 
-        <Alerts onOpenPermissions={() => setPage('permissions')} />
+        <Alerts page={page} onOpenPermissions={() => setPage('permissions')} onOpenAbout={() => setPage('about')} />
 
         <div className="flex-1 overflow-y-auto">
           <PageSwitch page={page} onOpenPermissions={() => setPage('permissions')} />
@@ -110,11 +110,35 @@ function PageSwitch({ page, onOpenPermissions }: PageSwitchProps) {
   }
 }
 
-function Alerts({ onOpenPermissions }: { onOpenPermissions: () => void }) {
-  const { error, setError, hotkeyProblems, audio, status, permissionError, setPermissionError } = useStore()
+interface AlertsProps {
+  page: PageId
+  onOpenPermissions: () => void
+  onOpenAbout: () => void
+}
+
+function Alerts({ page, onOpenPermissions, onOpenAbout }: AlertsProps) {
+  const {
+    error,
+    setError,
+    hotkeyProblems,
+    audio,
+    status,
+    permissionError,
+    setPermissionError,
+    updateInfo,
+    updatePhase,
+  } = useStore()
 
   return (
     <>
+      {updateInfo?.available && page !== 'about' && updatePhase !== 'downloading' && updatePhase !== 'ready' && (
+        <Alert tone="info" title={`发现新版本 v${updateInfo.version ?? ''}`}>
+          <Button size="sm" onClick={onOpenAbout}>
+            去「关于」页更新
+          </Button>
+        </Alert>
+      )}
+
       {error && (
         <Alert tone="error" title="操作失败">
           <p className="font-mono">{error}</p>

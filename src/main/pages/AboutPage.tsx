@@ -1,60 +1,31 @@
-import { type ReactNode, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from '@/main/store'
 import { formatCmdError, type ModelsList, modelsList, openRepo, openSponsor, openUrl } from '@/shared/ipc'
-import { ModelKind } from '@/shared/types'
+import { ModelKind, TaskStatus } from '@/shared/types'
 import { Button } from '@/ui/Button'
 import { Icon } from '@/ui/Icon'
 import { Page } from '@/ui/Page'
+import { ProgressBar } from '@/ui/ProgressBar'
 import { SettingsGroup, SettingsRow } from '@/ui/Settings'
-
-const REPO_URL = 'https://github.com/niyongsheng/AudioScript'
 
 const SITE_URL = 'https://niyongsheng.github.io/AudioScript/'
 
-const LATEST_RELEASE_URL = 'https://api.github.com/repos/niyongsheng/AudioScript/releases/latest'
-
 const AFDIAN_BADGE = 'https://img.shields.io/badge/爱发电-Afdian-946ce6?style=for-the-badge&logo=github&logoColor=white'
 
-type UpdateState =
-  | { kind: 'idle' }
-  | { kind: 'checking' }
-  | { kind: 'upToDate' }
-  | { kind: 'available'; version: string; url: string }
-  | { kind: 'error'; message: string }
-
-function compareVersions(a: string, b: string): number {
-  const parts = (v: string) =>
-    v
-      .replace(/^v/, '')
-      .split('.')
-      .map((p) => Number.parseInt(p, 10) || 0)
-  const pa = parts(a)
-  const pb = parts(b)
-  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
-    const diff = (pa[i] ?? 0) - (pb[i] ?? 0)
-    if (diff !== 0) return diff > 0 ? 1 : -1
-  }
-  return 0
-}
-
-function describeUpdate(state: UpdateState, current: string | null): ReactNode {
-  switch (state.kind) {
-    case 'checking':
-      return '正在从 GitHub 获取最新版本…'
-    case 'upToDate':
-      return current ? `已是最新版本（v${current}）` : '已是最新版本'
-    case 'available':
-      return `发现新版本 v${state.version}`
-    case 'error':
-      return `检查失败：${state.message}`
-    default:
-      return '从 GitHub 获取最新版本'
-  }
-}
-
 export function AboutPage() {
-  const { info, setError } = useStore()
-  const [update, setUpdate] = useState<UpdateState>({ kind: 'idle' })
+  const {
+    info,
+    setError,
+    status,
+    updateInfo,
+    updatePhase,
+    updateProgress,
+    updateError,
+    installedVersion,
+    checkUpdate,
+    installUpdate,
+    restartApp,
+  } = useStore()
   const [models, setModels] = useState<ModelsList | null>(null)
   const [modelsFailed, setModelsFailed] = useState(false)
   const [licensesOpen, setLicensesOpen] = useState(false)
@@ -73,45 +44,6 @@ export function AboutPage() {
     }
   }, [])
 
-  async function checkForUpdates() {
-    if (update.kind === 'checking' || !info) return
-    setUpdate({ kind: 'checking' })
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 10_000)
-    try {
-      const res = await fetch(LATEST_RELEASE_URL, {
-        headers: { Accept: 'application/vnd.github+json' },
-        signal: controller.signal,
-      })
-      if (!res.ok) {
-        throw new Error(res.status === 403 ? 'GitHub 请求受限，请稍后重试' : `HTTP ${res.status}`)
-      }
-      const data = (await res.json()) as { tag_name?: string; html_url?: string }
-      const latest = (data.tag_name ?? '').replace(/^v/, '')
-      if (!latest) throw new Error('响应缺少版本号')
-      const url = data.html_url ?? `${REPO_URL}/releases/tag/${data.tag_name}`
-      setUpdate(
-        compareVersions(latest, info.version) > 0 ? { kind: 'available', version: latest, url } : { kind: 'upToDate' },
-      )
-    } catch (e) {
-      let message = String(e)
-      if (e instanceof DOMException && e.name === 'AbortError') message = '检查超时，请检查网络后重试'
-      else if (e instanceof TypeError) message = '网络不可用或无法访问 GitHub'
-      else if (e instanceof Error) message = e.message
-      setUpdate({ kind: 'error', message })
-    } finally {
-      clearTimeout(timer)
-    }
-  }
-
-  async function openRelease(url: string) {
-    try {
-      await openUrl(url)
-    } catch (e) {
-      setError(formatCmdError(e))
-    }
-  }
-
   async function openSite() {
     try {
       await openUrl(SITE_URL)
@@ -128,7 +60,28 @@ export function AboutPage() {
     }
   }
 
-  const available = update.kind === 'available' ? update : null
+  const capturing = status === TaskStatus.Capturing
+  const percent =
+    updateProgress?.total != null
+      ? Math.min(100, Math.floor((updateProgress.downloaded / updateProgress.total) * 100))
+      : null
+
+  const updateDescription = (() => {
+    if (updatePhase === 'downloading') {
+      return `正在下载并安装 v${updateInfo?.version ?? ''}${percent == null ? '' : `（${percent}%）`}…`
+    }
+    if (updatePhase === 'ready') {
+      const version = installedVersion ?? updateInfo?.version ?? ''
+      return capturing ? `已安装 v${version}，请先停止转写再重启` : `已安装 v${version}，重启应用后生效`
+    }
+    if (updatePhase === 'error') return `更新失败：${updateError ?? '未知错误'}`
+    if (updatePhase === 'checking') return '正在检查最新版本…'
+    if (updateInfo?.available) {
+      return capturing ? '发现新版本，请先停止转写再更新' : `发现新版本 v${updateInfo.version}`
+    }
+    if (updateInfo) return `已是最新版本（v${updateInfo.currentVersion}）`
+    return '启动时自动检查，也可手动检查'
+  })()
 
   return (
     <Page title="关于">
@@ -137,19 +90,47 @@ export function AboutPage() {
         <SettingsRow
           icon="download"
           title="检查更新"
-          description={describeUpdate(update, info?.version ?? null)}
+          description={
+            <>
+              {updateDescription}
+              {updateInfo?.available && updatePhase === 'idle' && updateInfo.notes && (
+                <p className="mt-1 line-clamp-3 whitespace-pre-line">{updateInfo.notes}</p>
+              )}
+            </>
+          }
           control={
-            available ? (
-              <Button size="sm" variant="primary" icon="external" onClick={() => void openRelease(available.url)}>
-                下载 v{available.version}
+            updatePhase === 'downloading' ? (
+              <div className="flex items-center gap-2">
+                <ProgressBar value={percent} label="更新下载进度" />
+                <Mono>{percent == null ? '下载中' : `${percent}%`}</Mono>
+              </div>
+            ) : updatePhase === 'ready' ? (
+              <Button
+                size="sm"
+                variant="primary"
+                icon="refresh"
+                onClick={() => void restartApp()}
+                disabled={capturing}
+              >
+                重启
+              </Button>
+            ) : updateInfo?.available ? (
+              <Button
+                size="sm"
+                variant="primary"
+                icon="download"
+                onClick={() => void installUpdate()}
+                disabled={capturing || updatePhase === 'checking'}
+              >
+                下载并安装
               </Button>
             ) : (
               <Button
                 size="sm"
                 icon="refresh"
-                onClick={() => void checkForUpdates()}
-                disabled={!info}
-                pending={update.kind === 'checking'}
+                onClick={() => void checkUpdate()}
+                disabled={!info || updatePhase === 'checking'}
+                pending={updatePhase === 'checking'}
               >
                 检查
               </Button>

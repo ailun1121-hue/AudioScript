@@ -67,6 +67,8 @@ uuid = { version = "1", features = ["v4"] }
 flexaudio = "0.5.4"
 tauri-plugin-autostart = "2.7.0"
 tauri-plugin-dialog = "2"
+# 自动更新：构建时未设 TAURI_SIGNING_PRIVATE_KEY 不会产出带签名的更新包，CI 见 build.yml。
+tauri-plugin-updater = "2"
 # 匿名使用统计（Aptabase），事件全部由本项目显式上报，插件自身不采集任何东西。
 tauri-plugin-aptabase = "1.3"
 

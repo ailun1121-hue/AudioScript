@@ -72,13 +72,23 @@ jobs:
         run: pnpm fetch:mt
 
       - name: Build Tauri app (DMG)
-        run: pnpm tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --config src-tauri/tauri.updater.conf.json
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
           name: AudioScript-macOS-ARM
           path: src-tauri/target/release/bundle/dmg/*.dmg
+          compression-level: 0
+
+      - name: Upload updater artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-macOS-ARM
+          path: src-tauri/target/release/bundle/macos/*.app.tar.gz*
           compression-level: 0
 
   # Windows/Linux 只验证过编译与打包，采集/置顶/托盘/热键未在真机验证。
@@ -148,7 +158,10 @@ jobs:
         run: pnpm fetch:mt
 
       - name: Build Tauri app
-        run: pnpm tauri build --bundles nsis,msi
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --bundles nsis,msi --config src-tauri/tauri.updater.conf.json
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
@@ -157,6 +170,20 @@ jobs:
           path: |-
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/msi/*.msi
+          compression-level: 0
+
+      - name: Upload NSIS updater artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-Windows-x64
+          path: src-tauri/target/release/bundle/nsis/*.nsis.zip*
+          compression-level: 0
+
+      - name: Upload MSI updater artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-Windows-x64-msi
+          path: src-tauri/target/release/bundle/msi/*.msi.zip*
           compression-level: 0
 
   build-linux:
@@ -236,7 +263,10 @@ jobs:
         run: pnpm fetch:mt
 
       - name: Build Tauri app
-        run: pnpm tauri build --bundles deb,appimage
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --bundles deb,appimage --config src-tauri/tauri.updater.conf.json
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
@@ -247,6 +277,13 @@ jobs:
             src-tauri/target/release/bundle/appimage/*.AppImage
           compression-level: 0
 
+      - name: Upload updater artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-Linux-x64
+          path: src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz*
+          compression-level: 0
+
   release:
     name: Create Release
     needs: [build-mac-arm, build-windows, build-linux]
@@ -255,8 +292,27 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
+
+      # 每个平台只产出本平台的 .sig，这里合成 updater 所需的单一 latest.json。
+      - name: Generate updater manifest
+        run: |-
+          VERSION="${GITHUB_REF_NAME#v}"
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          node scripts/make-updater-manifest.mjs \
+            --version "$VERSION" \
+            --base-url "$BASE" \
+            --platform "darwin-aarch64=$(ls updater-macOS-ARM/*.app.tar.gz)" \
+            --platform "darwin-aarch64-app=$(ls updater-macOS-ARM/*.app.tar.gz)" \
+            --platform "windows-x86_64=$(ls updater-Windows-x64/*.nsis.zip)" \
+            --platform "windows-x86_64-nsis=$(ls updater-Windows-x64/*.nsis.zip)" \
+            --platform "windows-x86_64-msi=$(ls updater-Windows-x64-msi/*.msi.zip)" \
+            --platform "linux-x86_64=$(ls updater-Linux-x64/*.AppImage.tar.gz)" \
+            --platform "linux-x86_64-appimage=$(ls updater-Linux-x64/*.AppImage.tar.gz)"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -272,3 +328,8 @@ jobs:
             AudioScript-Windows-x64/msi/*.msi
             AudioScript-Linux-x64/deb/*.deb
             AudioScript-Linux-x64/appimage/*.AppImage
+            updater-macOS-ARM/*.app.tar.gz
+            updater-Windows-x64/*.nsis.zip
+            updater-Windows-x64-msi/*.msi.zip
+            updater-Linux-x64/*.AppImage.tar.gz
+            latest.json

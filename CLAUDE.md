@@ -42,4 +42,6 @@ pnpm fetch:model:high   # 下载高精度 ASR（511 MB）到 .cache/，打印 ca
 pnpm verify:models      # 校验 model-catalog.json（--online 会重新下载核对）
 ```
 
+自动更新签名：GitHub Actions 需要 `TAURI_SIGNING_PRIVATE_KEY`（`~/.tauri/audioscript.key` 的内容）和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。本地 `pnpm tauri build` 不产出更新包，CI 通过 `src-tauri/tauri.updater.conf.json` 打开 `createUpdaterArtifacts`；缺 Secret 时 `.sig` 不会生成，release job 的 latest.json 步骤会失败。
+
 `fetch:model:high` 仅供维护者启用可选模型，普通开发构建不需要。

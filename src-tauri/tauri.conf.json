@@ -49,6 +49,12 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/niyongsheng/AudioScript/releases/latest/download/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIzMDAzQzYxRkYwRDYxMTkKUldRWllRMy9ZVHdBSXdRVmdCUjBZSmZ0dXpkZzNrUTJxVGRFbERCV0N3amRzS3RuYVN4bFdVZm8K"
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

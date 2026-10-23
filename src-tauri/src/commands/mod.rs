@@ -7,7 +7,7 @@ use crate::config::{
     direction_label, target_lang_for, EndpointConfig, EndpointProfile, OverlayConfig, OverlayMode,
     Preferences, PrefsPatch, SessionConfig, TranslateEngine,
 };
-use crate::{audio, overlay, permission, prefs, session, shortcut};
+use crate::{audio, overlay, permission, prefs, session, shortcut, update};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CmdError {
@@ -147,6 +147,22 @@ where
 }
 
 pub async fn route_async(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdError> {
+    match name {
+        "update_check" => {
+            return update::check(app)
+                .await
+                .map(|r| json!(r))
+                .map_err(CmdError::Failed)
+        }
+        "update_install" => {
+            return update::install(app)
+                .await
+                .map(|version| json!({ "version": version }))
+                .map_err(CmdError::Failed)
+        }
+        _ => {}
+    }
+
     let plan = match name {
         "session_start" => Some((Lane::Session, std::time::Duration::from_secs(60))),
         "permission_probe_system_audio" => Some((Lane::Quick, std::time::Duration::from_secs(30))),
@@ -167,6 +183,11 @@ pub async fn route_async(app: &AppHandle, name: &str, args: &Value) -> Result<Va
 pub fn route(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdError> {
     match name {
         "app_info" => Ok(app_info()),
+
+        "update_restart" => {
+            tracing::info!("正在重启以应用更新");
+            app.restart();
+        }
         "overlay_toggle" => overlay::toggle(app)
             .map(|v| json!(v))
             .map_err(CmdError::Failed),

@@ -10,7 +10,8 @@
       "allow": [
         { "event": "transcript://*" },
         { "event": "overlay://*" },
-        { "event": "models://*" }
+        { "event": "models://*" },
+        { "event": "update://*" }
       ]
     },
     "core:window:allow-start-dragging",

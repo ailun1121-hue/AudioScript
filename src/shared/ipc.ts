@@ -55,6 +55,7 @@ export const EVENT = {
   audio: 'transcript://audio',
   level: 'transcript://level',
   modelsProgress: 'models://progress',
+  updateProgress: 'update://progress',
 } as const
 
 export function on<T>(event: string, handler: (payload: T) => void): Promise<UnlistenFn> {
@@ -81,6 +82,30 @@ export interface ConfigDefaults {
 
 export function appInfo(): Promise<AppInfo> {
   return call<AppInfo>('app_info')
+}
+
+export interface UpdateCheckResult {
+  currentVersion: string
+  available: boolean
+  version: string | null
+  notes: string | null
+}
+
+export interface UpdateProgress {
+  downloaded: number
+  total: number | null
+}
+
+export function updateCheck(): Promise<UpdateCheckResult> {
+  return call<UpdateCheckResult>('update_check')
+}
+
+export function updateInstall(): Promise<{ version: string }> {
+  return call<{ version: string }>('update_install')
+}
+
+export function updateRestart(): Promise<null> {
+  return call<null>('update_restart')
 }
 
 export function sessionStart(

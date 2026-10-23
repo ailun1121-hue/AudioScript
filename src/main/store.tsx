@@ -33,12 +33,19 @@ import {
   shortcutsGet,
   Theme,
   TranslateEngine,
+  type UpdateCheckResult,
+  type UpdateProgress,
+  updateCheck,
+  updateInstall,
+  updateRestart,
   ZhScript,
 } from '@/shared/ipc'
 import { withTimeout } from '@/shared/timeout'
 import { TaskStatus } from '@/shared/types'
 
 type EndpointConfig = Preferences['endpoint']
+
+export type UpdatePhase = 'idle' | 'checking' | 'downloading' | 'ready' | 'error'
 
 interface Store {
   info: AppInfo | null
@@ -64,6 +71,15 @@ interface Store {
 
   hotkeys: HotkeyInfo[]
   hotkeyProblems: HotkeyFailure[]
+
+  updateInfo: UpdateCheckResult | null
+  updatePhase: UpdatePhase
+  updateProgress: UpdateProgress | null
+  updateError: string | null
+  installedVersion: string | null
+  checkUpdate: (silent?: boolean) => Promise<void>
+  installUpdate: () => Promise<void>
+  restartApp: () => Promise<void>
 
   onboardingDone: boolean
   completeOnboarding: () => Promise<void>
@@ -143,6 +159,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState(false)
   const pendingRef = useRef(false)
 
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null)
+  const [updatePhase, setUpdatePhase] = useState<UpdatePhase>('idle')
+  const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null)
+  const [updateError, setUpdateError] = useState<string | null>(null)
+  const [installedVersion, setInstalledVersion] = useState<string | null>(null)
+  const updateBusyRef = useRef(false)
+
   useEffect(() => {
     appInfo()
       .then(setInfo)
@@ -171,6 +194,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     on<OverlayConfig>(EVENT.overlayState, setOverlayCfg).then(keep)
 
     on<boolean>(EVENT.overlayVisibility, setOverlayVisible).then(keep)
+
+    on<UpdateProgress>(EVENT.updateProgress, setUpdateProgress).then(keep)
 
     return () => {
       disposed = true
@@ -408,9 +433,67 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [patchPrefs],
   )
 
+  const checkUpdate = useCallback(async (silent = false) => {
+    if (updateBusyRef.current) return
+    updateBusyRef.current = true
+    setUpdatePhase('checking')
+    if (!silent) setUpdateError(null)
+    try {
+      setUpdateInfo(await updateCheck())
+      setUpdatePhase('idle')
+    } catch (e) {
+      setUpdatePhase(silent ? 'idle' : 'error')
+      if (!silent) setUpdateError(formatCmdError(e))
+    } finally {
+      updateBusyRef.current = false
+    }
+  }, [])
+
+  const installUpdate = useCallback(async () => {
+    if (updateBusyRef.current) return
+    updateBusyRef.current = true
+    setUpdatePhase('downloading')
+    setUpdateError(null)
+    setUpdateProgress({ downloaded: 0, total: null })
+    try {
+      const r = await updateInstall()
+      setInstalledVersion(r.version)
+      setUpdatePhase('ready')
+    } catch (e) {
+      setUpdatePhase('error')
+      setUpdateError(formatCmdError(e))
+    } finally {
+      updateBusyRef.current = false
+    }
+  }, [])
+
+  const restartApp = useCallback(async () => {
+    try {
+      await updateRestart()
+    } catch (e) {
+      setError(formatCmdError(e))
+    }
+  }, [])
+
+  const autoCheckedRef = useRef(false)
+  useEffect(() => {
+    if (!info || autoCheckedRef.current) return
+    autoCheckedRef.current = true
+    if (!import.meta.env.PROD) return
+    void checkUpdate(true)
+  }, [info, checkUpdate])
+
   const value = useMemo<Store>(
     () => ({
       info,
+      updateInfo,
+      updatePhase,
+      updateProgress,
+      updateError,
+      installedVersion,
+      checkUpdate,
+      installUpdate,
+      restartApp,
       prefsReady,
       audioSource,
       device,
@@ -454,6 +537,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }),
     [
       info,
+      updateInfo,
+      updatePhase,
+      updateProgress,
+      updateError,
+      installedVersion,
+      checkUpdate,
+      installUpdate,
+      restartApp,
       prefsReady,
       audioSource,
       device,
