@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/main/store'
-import { type ConfigDefaults, configDefaults, TranslateEngine } from '@/shared/ipc'
+import { type ConfigDefaults, configDefaults, TranslateEngine, ZhScript } from '@/shared/ipc'
 import {
   MAX_MAX_UTTERANCE_MS,
   MAX_TRAILING_SILENCE_MS,
@@ -26,13 +26,23 @@ const ENGINE_OPTIONS = [
 
 const MOCK_OPTION = { value: TranslateEngine.Mock, label: '开发用假引擎' }
 
-const LANG_OPTIONS = [
-  { value: 'en', label: '英语 → 中文' },
-  { value: 'zh', label: '中文 → 英语' },
+const DIRECTIONS = [
+  { lang: 'en', script: ZhScript.Simplified, label: '英语 → 简体中文' },
+  { lang: 'zh', script: ZhScript.Simplified, label: '简体中文 → 英语' },
+  { lang: 'en', script: ZhScript.Traditional, label: '英语 → 繁体中文' },
+  { lang: 'zh', script: ZhScript.Traditional, label: '繁体中文 → 英语' },
 ]
 
+const directionValue = (lang: string, script: ZhScript) => `${lang}:${script}`
+
+const DIRECTION_OPTIONS = DIRECTIONS.map((d) => ({
+  value: directionValue(d.lang, d.script),
+  label: d.label,
+}))
+
 export function TranslatePage() {
-  const { translateEngine, setTranslateEngine, sourceLang, setSourceLang, endpoint, setEndpoint, status } = useStore()
+  const { translateEngine, setTranslateEngine, sourceLang, zhScript, setDirection, endpoint, setEndpoint, status } =
+    useStore()
   const capturing = status === TaskStatus.Capturing
 
   const [defaults, setDefaults] = useState<ConfigDefaults | null>(null)
@@ -67,13 +77,16 @@ export function TranslatePage() {
         <SettingsRow
           icon="external"
           title="翻译方向"
-          description="方向选错时译文会错乱，且不会报错。"
+          description="支持简体/繁体；方向选错时译文会错乱，且不会报错。"
           control={
             <Select
               label="翻译方向"
-              value={sourceLang}
-              options={LANG_OPTIONS}
-              onChange={setSourceLang}
+              value={directionValue(sourceLang, zhScript)}
+              options={DIRECTION_OPTIONS}
+              onChange={(v) => {
+                const d = DIRECTIONS.find((d) => directionValue(d.lang, d.script) === v)
+                if (d) setDirection(d.lang, d.script)
+              }}
               disabled={capturing || translateEngine === TranslateEngine.Off}
             />
           }

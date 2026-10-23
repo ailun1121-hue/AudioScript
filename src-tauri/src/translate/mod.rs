@@ -1,6 +1,7 @@
 pub mod local_nmt;
 pub mod mock;
 pub mod queue;
+pub mod script;
 
 use crate::config::TranslateConfig;
 

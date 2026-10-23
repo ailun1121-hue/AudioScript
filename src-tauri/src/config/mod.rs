@@ -150,6 +150,7 @@ pub struct TranslateConfig {
     pub engine: TranslateEngine,
     pub source_lang: String,
     pub target_lang: String,
+    pub zh_script: ZhScript,
     pub model_dir: Option<String>,
 }
 
@@ -159,6 +160,7 @@ impl Default for TranslateConfig {
             engine: TranslateEngine::default(),
             source_lang: "en".into(),
             target_lang: "zh".into(),
+            zh_script: ZhScript::default(),
             model_dir: None,
         }
     }
@@ -312,6 +314,24 @@ impl MtModelTier {
 
 #[typeshare]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ZhScript {
+    #[default]
+    Simplified,
+    Traditional,
+}
+
+impl ZhScript {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Simplified => "simplified",
+            Self::Traditional => "traditional",
+        }
+    }
+}
+
+#[typeshare]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum Theme {
     #[default]
@@ -399,6 +419,7 @@ pub struct Preferences {
     pub device_id: Option<String>,
     pub translate_engine: TranslateEngine,
     pub source_lang: String,
+    pub zh_script: ZhScript,
     pub overlay: OverlayConfig,
     pub theme: Theme,
     pub sidebar_visible: bool,
@@ -418,6 +439,7 @@ impl Default for Preferences {
             device_id: None,
             translate_engine: TranslateEngine::default(),
             source_lang: "en".into(),
+            zh_script: ZhScript::default(),
             overlay: OverlayConfig::default(),
             theme: Theme::default(),
             sidebar_visible: true,
@@ -440,6 +462,7 @@ pub struct PrefsPatch {
     pub device_id: Option<String>,
     pub translate_engine: Option<TranslateEngine>,
     pub source_lang: Option<String>,
+    pub zh_script: Option<ZhScript>,
     pub endpoint: Option<EndpointConfig>,
     pub theme: Option<Theme>,
     pub sidebar_visible: Option<bool>,
@@ -476,6 +499,9 @@ impl PrefsPatch {
         }
         if let Some(v) = self.source_lang {
             p.source_lang = v;
+        }
+        if let Some(v) = self.zh_script {
+            p.zh_script = v;
         }
         if let Some(v) = self.endpoint {
             p.endpoint = v;
@@ -530,6 +556,15 @@ impl Preferences {
 
     pub fn target_lang(&self) -> &'static str {
         target_lang_for(&self.source_lang)
+    }
+}
+
+pub fn direction_label(source_lang: &str, zh_script: ZhScript) -> &'static str {
+    match (source_lang.starts_with("zh"), zh_script) {
+        (true, ZhScript::Traditional) => "繁体中文 → 英语",
+        (true, ZhScript::Simplified) => "简体中文 → 英语",
+        (false, ZhScript::Traditional) => "英语 → 繁体中文",
+        (false, ZhScript::Simplified) => "英语 → 简体中文",
     }
 }
 
@@ -658,6 +693,26 @@ mod tests {
         assert_eq!(target_lang_for("en"), "zh");
         assert_eq!(target_lang_for("zh"), "en");
         assert_eq!(target_lang_for("auto"), "zh");
+    }
+
+    #[test]
+    fn direction_label_covers_all_four_directions() {
+        assert_eq!(
+            direction_label("en", ZhScript::Simplified),
+            "英语 → 简体中文"
+        );
+        assert_eq!(
+            direction_label("zh", ZhScript::Simplified),
+            "简体中文 → 英语"
+        );
+        assert_eq!(
+            direction_label("en", ZhScript::Traditional),
+            "英语 → 繁体中文"
+        );
+        assert_eq!(
+            direction_label("zh", ZhScript::Traditional),
+            "繁体中文 → 英语"
+        );
     }
 
     #[test]

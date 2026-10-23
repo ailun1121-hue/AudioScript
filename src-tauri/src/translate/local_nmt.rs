@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 
 use ct2rs::tokenizers::hf::Tokenizer as HfTokenizer;
 
-use super::{TranslateCaps, TranslateError, Translator};
-use crate::config::{MtModelTier, TranslateConfig};
+use super::{script, TranslateCaps, TranslateError, Translator};
+use crate::config::{MtModelTier, TranslateConfig, ZhScript};
 use crate::models::catalog;
 
 const SOURCE_TOKENIZER: &str = "source-tokenizer.json";
@@ -43,6 +43,7 @@ impl ct2rs::Tokenizer for MarianTokenizer {
 pub struct LocalNmt {
     engine: Option<ct2rs::Translator<MarianTokenizer>>,
     direction: Direction,
+    script: ZhScript,
     tier: MtModelTier,
     model_root: PathBuf,
 }
@@ -99,8 +100,25 @@ impl LocalNmt {
         Self {
             engine: None,
             direction: Direction::EnZh,
+            script: ZhScript::default(),
             tier,
             model_root,
+        }
+    }
+
+    fn source_for_model(&self, text: &str) -> String {
+        if self.direction == Direction::ZhEn {
+            script::to_simplified(text)
+        } else {
+            text.to_string()
+        }
+    }
+
+    fn output_for_script(&self, text: String) -> String {
+        if self.direction == Direction::EnZh && self.script == ZhScript::Traditional {
+            script::to_traditional(&text)
+        } else {
+            text
         }
     }
 
@@ -136,6 +154,7 @@ impl LocalNmt {
 impl Translator for LocalNmt {
     fn init(&mut self, cfg: &TranslateConfig) -> Result<(), TranslateError> {
         self.direction = Direction::resolve(&cfg.source_lang, &cfg.target_lang)?;
+        self.script = cfg.zh_script;
 
         if let Some(dir) = &cfg.model_dir {
             self.model_root = dunce::simplified(Path::new(dir)).to_path_buf();
@@ -173,7 +192,7 @@ impl Translator for LocalNmt {
     fn translate(&mut self, text: &str) -> Result<String, TranslateError> {
         let engine = self.engine.as_ref().ok_or(TranslateError::NotInitialized)?;
 
-        let sources = vec![text.to_string()];
+        let sources = vec![self.source_for_model(text)];
         let options = ct2rs::TranslationOptions {
             beam_size: 1,
             ..Default::default()
@@ -192,7 +211,7 @@ impl Translator for LocalNmt {
             return Err(TranslateError::Degenerate { reason });
         }
 
-        Ok(translated)
+        Ok(self.output_for_script(translated))
     }
 
     fn shutdown(&mut self) {
@@ -255,6 +274,23 @@ mod tests {
             Direction::ZhEn.dir_name(MtModelTier::Big),
             "opus-mt-tc-big-zh-en-ct2"
         );
+    }
+
+    #[test]
+    fn traditional_script_wraps_the_model_input_and_output() {
+        let mut t = LocalNmt::new(PathBuf::from("/tmp"), MtModelTier::Base);
+
+        t.script = ZhScript::Simplified;
+        t.direction = Direction::ZhEn;
+        assert_eq!(t.source_for_model("機器學習"), "机器学习");
+        t.direction = Direction::EnZh;
+        assert_eq!(t.output_for_script("机器学习".into()), "机器学习");
+
+        t.script = ZhScript::Traditional;
+        t.direction = Direction::ZhEn;
+        assert_eq!(t.source_for_model("機器學習"), "机器学习");
+        t.direction = Direction::EnZh;
+        assert_eq!(t.output_for_script("机器学习".into()), "機器學習");
     }
 
     #[test]

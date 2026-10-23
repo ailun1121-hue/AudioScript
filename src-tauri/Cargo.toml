@@ -76,6 +76,7 @@ tar = "0.4"
 flate2 = "1"
 bzip2 = "0.5"
 sha2 = "0.10"
+zhconv = { version = "0.4", features = ["opencc"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Apple Silicon 的推荐组合就是 accelerate + ruy。

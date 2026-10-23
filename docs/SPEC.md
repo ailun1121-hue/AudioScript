@@ -184,6 +184,7 @@ interface TranslateConfig {
   engine: "off" | "local-nmt" | "remote-api" | "mock"
   sourceLang: string                // "auto" 未实现，传了明确报错——猜错方向是静默失败
   targetLang: string
+  zhScript: "simplified" | "traditional"  // 中文一侧的用字，默认 simplified
   modelDir?: string
 }
 
@@ -395,6 +396,13 @@ pub trait Translator: Send {
 | 模型 | `Helsinki-NLP/opus-mt-{en-zh,zh-en}` 转 CTranslate2 **int8**，每方向 76 MB |
 | 许可 | en→zh Apache-2.0；zh→en CC-BY-4.0（**MUST 在关于页署名**） |
 | 延迟 | 70–77 ms/句（release，M 系列 CPU，beam=1） |
+
+**简繁方向**：本地模型只覆盖简体 ↔ 英语，繁体方向靠 OpenCC 规则转换补齐，MUST 统一走 `translate::script`：
+
+- `繁体中文 → 英语`：ASR 原文先转繁体（展示、导出与翻译任务用同一份文本），送入模型前再转简体；
+- `英语 → 繁体中文`：模型输出简体后转繁体。
+
+原文与译文 MUST 使用同一种用字，否则悬浮窗会出现「简体原文 + 繁体译文」的割裂。
 
 三条实现硬规则（全部会导致**静默的**无限重复输出，而非报错）：
 

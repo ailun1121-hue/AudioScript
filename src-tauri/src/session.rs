@@ -10,7 +10,7 @@ use crate::asr::{AsrEngine, TARGET_SAMPLE_RATE};
 use crate::audio::{self, CaptureHandle, SILENCE_RMS};
 use crate::config::{
     target_lang_for, AsrConfig, EngineType, MtModelTier, SessionConfig, TranslateConfig,
-    TranslateEngine,
+    TranslateEngine, ZhScript,
 };
 use crate::models::catalog;
 use crate::paths;
@@ -498,6 +498,8 @@ pub fn start(
     let mut level_emit_failed = false;
 
     tracing::info!("启动采集");
+    let translate_source_is_zh = cfg.translate.source_lang.starts_with("zh");
+    let zh_script = cfg.translate.zh_script;
     let audio_clock = Arc::clone(&state.audio_started_at);
     let capture = audio::start(source, device.as_deref(), move |chunk: &[f32]| {
         {
@@ -584,7 +586,7 @@ pub fn start(
             energy_n = 0;
         }
 
-        let deltas = {
+        let mut deltas = {
             let mut eng = engine_for_sink.lock().expect("engine mutex poisoned");
             match eng.feed_pcm(chunk) {
                 Ok(d) => d,
@@ -596,6 +598,11 @@ pub fn start(
         };
         if deltas.is_empty() {
             return;
+        }
+        if translate_source_is_zh && zh_script == ZhScript::Traditional {
+            for d in &mut deltas {
+                d.text = crate::translate::script::to_traditional(&d.text);
+            }
         }
 
         let to_translate = {
@@ -694,6 +701,7 @@ pub fn start(
             "audio_source": source.as_str(),
             "translate_engine": cfg.translate.engine.as_str(),
             "source_lang": cfg.translate.source_lang,
+            "zh_script": cfg.translate.zh_script.as_str(),
             "asr_model_tier": prefs.asr_model_tier.as_str(),
             "custom_asr_model": if cfg.asr.model_dir.as_deref().is_some_and(|s| !s.trim().is_empty()) { 1 } else { 0 },
         })),

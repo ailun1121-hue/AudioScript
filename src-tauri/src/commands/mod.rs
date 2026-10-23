@@ -4,8 +4,8 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::config::{
-    target_lang_for, EndpointConfig, EndpointProfile, OverlayConfig, OverlayMode, Preferences,
-    PrefsPatch, SessionConfig, TranslateEngine,
+    direction_label, target_lang_for, EndpointConfig, EndpointProfile, OverlayConfig, OverlayMode,
+    Preferences, PrefsPatch, SessionConfig, TranslateEngine,
 };
 use crate::{audio, overlay, permission, prefs, session, shortcut};
 
@@ -382,6 +382,7 @@ pub fn route(app: &AppHandle, name: &str, args: &Value) -> Result<Value, CmdErro
             tracing::info!(
                 source_lang = %cfg.translate.source_lang,
                 target_lang = %target_lang_for(&cfg.translate.source_lang),
+                zh_script = cfg.translate.zh_script.as_str(),
                 engine = cfg.translate.engine.as_str(),
                 trailing_silence_ms = cfg.asr.endpoint.trailing_silence_ms,
                 max_utterance_ms = cfg.asr.endpoint.max_utterance_ms,
@@ -492,11 +493,7 @@ fn export_transcript(
     let p = prefs::load(app);
     let direction = match p.translate_engine {
         TranslateEngine::Off => None,
-        _ => Some(if target_lang_for(&p.source_lang) == "en" {
-            "中文 → 英语"
-        } else {
-            "英语 → 中文"
-        }),
+        _ => Some(direction_label(&p.source_lang, p.zh_script)),
     };
 
     let mut file = dest.to_path_buf();

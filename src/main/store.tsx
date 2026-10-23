@@ -33,6 +33,7 @@ import {
   shortcutsGet,
   Theme,
   TranslateEngine,
+  ZhScript,
 } from '@/shared/ipc'
 import { withTimeout } from '@/shared/timeout'
 import { TaskStatus } from '@/shared/types'
@@ -47,6 +48,7 @@ interface Store {
   device: string
   translateEngine: TranslateEngine
   sourceLang: string
+  zhScript: ZhScript
   theme: Theme
   endpoint: EndpointConfig
 
@@ -83,7 +85,7 @@ interface Store {
   setAudioSource: (v: AudioSourceKind) => void
   setDevice: (v: string) => void
   setTranslateEngine: (v: TranslateEngine) => void
-  setSourceLang: (v: string) => void
+  setDirection: (lang: string, script: ZhScript) => void
   changeTheme: (v: Theme) => Promise<void>
   setEndpoint: (v: EndpointConfig) => Promise<void>
   updateOverlay: (patch: Partial<OverlayConfig>) => Promise<void>
@@ -112,6 +114,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [device, setDevice] = useState('')
   const [translateEngine, setTranslateEngine] = useState<TranslateEngine>(TranslateEngine.LocalNmt)
   const [sourceLang, setSourceLang] = useState('en')
+  const [zhScript, setZhScript] = useState(ZhScript.Simplified)
   const [theme, setTheme] = useState<Theme>(Theme.System)
   const [endpoint, setEndpoint] = useState<EndpointConfig>({
     trailingSilenceMs: 800,
@@ -181,6 +184,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setAudioSource(p.audioSource as AudioSourceKind)
         setTranslateEngine(p.translateEngine)
         setSourceLang(p.sourceLang)
+        setZhScript(p.zhScript)
         setTheme(p.theme)
         setEndpoint(p.endpoint)
         setOnboardingDone(p.onboardingDone)
@@ -292,7 +296,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       } else {
         setStatus(
           await withTimeout(
-            sessionStart(device || undefined, translateEngine, sourceLang, audioSource),
+            sessionStart(device || undefined, translateEngine, sourceLang, zhScript, audioSource),
             START_TIMEOUT_MS,
             '开始转写超时，请重试',
           ),
@@ -315,7 +319,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       pendingRef.current = false
       setPending(false)
     }
-  }, [status, device, translateEngine, sourceLang, audioSource, refreshPermission])
+  }, [status, device, translateEngine, sourceLang, zhScript, audioSource, refreshPermission])
 
   const clearAll = useCallback(async () => {
     await sessionClear()
@@ -386,11 +390,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [patchPrefs],
   )
 
-  const changeSourceLang = useCallback(
-    (v: string) => {
-      setSourceLang(v)
-      void patchPrefs({ sourceLang: v })
-      track('setting_changed', { key: 'source_lang', value: v })
+  const changeDirection = useCallback(
+    (lang: string, script: ZhScript) => {
+      setSourceLang(lang)
+      setZhScript(script)
+      void patchPrefs({ sourceLang: lang, zhScript: script })
+      track('setting_changed', { key: 'translate_direction', value: `${lang}:${script}` })
     },
     [patchPrefs],
   )
@@ -411,6 +416,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       device,
       translateEngine,
       sourceLang,
+      zhScript,
       theme,
       endpoint,
       status,
@@ -438,7 +444,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setAudioSource: changeAudioSource,
       setDevice: changeDevice,
       setTranslateEngine: changeTranslateEngine,
-      setSourceLang: changeSourceLang,
+      setDirection: changeDirection,
       changeTheme,
       setEndpoint: changeEndpoint,
       updateOverlay,
@@ -453,6 +459,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       device,
       translateEngine,
       sourceLang,
+      zhScript,
       theme,
       endpoint,
       status,
@@ -478,7 +485,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       changeAudioSource,
       changeDevice,
       changeTranslateEngine,
-      changeSourceLang,
+      changeDirection,
       changeTheme,
       changeEndpoint,
       updateOverlay,
