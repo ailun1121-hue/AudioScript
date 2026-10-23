@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { TaskStatus } from '@/shared/types'
 import { Alert } from '@/ui/Alert'
 import { Button } from '@/ui/Button'
+import { LevelStatus } from '@/ui/LevelStatus'
 import { PrimaryAction } from '@/ui/PrimaryAction'
 import { Sidebar } from '@/ui/Sidebar'
 import { TitleBarSpacer } from '@/ui/TitleBarSpacer'
@@ -45,6 +46,8 @@ function BootSplash() {
 
 function Shell() {
   const [page, setPage] = useState<PageId>('transcribe')
+  const { status } = useStore()
+  const capturing = status === TaskStatus.Capturing
 
   return (
     <main className="flex h-full">
@@ -58,6 +61,12 @@ function Shell() {
         <div className="flex-1 overflow-y-auto">
           <PageSwitch page={page} onOpenPermissions={() => setPage('permissions')} />
         </div>
+
+        <footer className="border-[var(--color-border-subtle)] border-t py-2">
+          <div className="flex items-center px-6">
+            <LevelStatus active={capturing} />
+          </div>
+        </footer>
       </section>
     </main>
   )
