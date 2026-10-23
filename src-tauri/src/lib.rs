@@ -304,6 +304,8 @@ pub fn run() {
                     api.prevent_exit();
                 }
             }
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => lifecycle::show_main(app),
             tauri::RunEvent::Exit => {
                 telemetry::track(app, "app_exited", None);
                 telemetry::flush(app);
