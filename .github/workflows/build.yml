@@ -58,7 +58,7 @@ jobs:
         shell: bash
         run: |-
           found=$(find src-tauri/target/sherpa-onnx-prebuilt -type f \
-            \( -name 'sherpa-onnx-c-api.lib' -o -name 'libsherpa-onnx-c-api.a' \) -print -quit 2>/dev/null)
+            \( -name 'sherpa-onnx-c-api.lib' -o -name 'libsherpa-onnx-c-api.a' \) -print -quit 2>/dev/null || true)
           if [ -z "$found" ]; then
             echo "::warning::sherpa-onnx 预编译库缺失，清空缓存后重新下载"
             rm -rf src-tauri/target/sherpa-onnx-prebuilt
@@ -150,7 +150,7 @@ jobs:
         shell: bash
         run: |-
           found=$(find src-tauri/target/sherpa-onnx-prebuilt -type f \
-            \( -name 'sherpa-onnx-c-api.lib' -o -name 'libsherpa-onnx-c-api.a' \) -print -quit 2>/dev/null)
+            \( -name 'sherpa-onnx-c-api.lib' -o -name 'libsherpa-onnx-c-api.a' \) -print -quit 2>/dev/null || true)
           if [ -z "$found" ]; then
             echo "::warning::sherpa-onnx 预编译库缺失，清空缓存后重新下载"
             rm -rf src-tauri/target/sherpa-onnx-prebuilt
@@ -274,7 +274,7 @@ jobs:
         shell: bash
         run: |-
           found=$(find src-tauri/target/sherpa-onnx-prebuilt -type f \
-            \( -name 'sherpa-onnx-c-api.lib' -o -name 'libsherpa-onnx-c-api.a' \) -print -quit 2>/dev/null)
+            \( -name 'sherpa-onnx-c-api.lib' -o -name 'libsherpa-onnx-c-api.a' \) -print -quit 2>/dev/null || true)
           if [ -z "$found" ]; then
             echo "::warning::sherpa-onnx 预编译库缺失，清空缓存后重新下载"
             rm -rf src-tauri/target/sherpa-onnx-prebuilt
