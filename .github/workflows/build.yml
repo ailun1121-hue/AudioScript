@@ -212,14 +212,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: updater-Windows-x64
-          path: src-tauri/target/release/bundle/nsis/*.nsis.zip*
+          path: src-tauri/target/release/bundle/nsis/*.exe*
           compression-level: 0
 
       - name: Upload MSI updater artifacts
         uses: actions/upload-artifact@v4
         with:
           name: updater-Windows-x64-msi
-          path: src-tauri/target/release/bundle/msi/*.msi.zip*
+          path: src-tauri/target/release/bundle/msi/*.msi*
           compression-level: 0
 
   build-linux:
@@ -335,7 +335,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: updater-Linux-x64
-          path: src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz*
+          path: src-tauri/target/release/bundle/appimage/*.AppImage*
+          compression-level: 0
+
+      - name: Upload deb updater artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-Linux-x64-deb
+          path: src-tauri/target/release/bundle/deb/*.deb*
           compression-level: 0
 
   release:
@@ -362,11 +369,12 @@ jobs:
             --base-url "$BASE" \
             --platform "darwin-aarch64=$(ls updater-macOS-ARM/*.app.tar.gz)" \
             --platform "darwin-aarch64-app=$(ls updater-macOS-ARM/*.app.tar.gz)" \
-            --platform "windows-x86_64=$(ls updater-Windows-x64/*.nsis.zip)" \
-            --platform "windows-x86_64-nsis=$(ls updater-Windows-x64/*.nsis.zip)" \
-            --platform "windows-x86_64-msi=$(ls updater-Windows-x64-msi/*.msi.zip)" \
-            --platform "linux-x86_64=$(ls updater-Linux-x64/*.AppImage.tar.gz)" \
-            --platform "linux-x86_64-appimage=$(ls updater-Linux-x64/*.AppImage.tar.gz)"
+            --platform "windows-x86_64=$(ls updater-Windows-x64/*-setup.exe)" \
+            --platform "windows-x86_64-nsis=$(ls updater-Windows-x64/*-setup.exe)" \
+            --platform "windows-x86_64-msi=$(ls updater-Windows-x64-msi/*.msi)" \
+            --platform "linux-x86_64=$(ls updater-Linux-x64/*.AppImage)" \
+            --platform "linux-x86_64-appimage=$(ls updater-Linux-x64/*.AppImage)" \
+            --platform "linux-x86_64-deb=$(ls updater-Linux-x64-deb/*.deb)"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -383,7 +391,4 @@ jobs:
             AudioScript-Linux-x64/deb/*.deb
             AudioScript-Linux-x64/appimage/*.AppImage
             updater-macOS-ARM/*.app.tar.gz
-            updater-Windows-x64/*.nsis.zip
-            updater-Windows-x64-msi/*.msi.zip
-            updater-Linux-x64/*.AppImage.tar.gz
             latest.json
