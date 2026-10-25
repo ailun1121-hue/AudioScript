@@ -112,7 +112,7 @@ block2 = "0.6"
 # ⚠️ 这条路径尚未在真机验证——CI 只跑 cargo check，见 .github/workflows/build.yml 的 check-* job。
 ct2rs = { version = "0.10", default-features = false, features = [
     "tokenizers",
-    "mkl",
+    "ruy",
 ] }
 
 [target.'cfg(unix)'.dependencies]
